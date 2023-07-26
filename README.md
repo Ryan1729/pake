@@ -1,8 +1,8 @@
-# rename-me
+# pake
 
-This is a template, designed to make using a particular method of cross-platform (desktop and web) development, in a new project, faster.
+<!-- PAKE stands for Poker? (I) 'Ardly Know 'Er. -->
 
-See below for build/run instructions, and see the `checklist` script for how to get started modifying a copy of the template to suit your needs.
+Pake is a single-player poker program.
 
 ## WASM version
 
@@ -16,36 +16,36 @@ rustup target add wasm32-unknown-unknown
 ```
 3. Start dev server:
 ```
-cargo run-wasm rename-me --release
+cargo run-wasm pake --release
 ```
-4. Visit `http://localhost:8000` with your browser.
+<!-- PAKE stands for Poker (I) 'Ardly Know 'Er. -->
 
-### Extra build options
+Pake4. single Vis-player poker program.
 
 These extra features can be adding then to the run-wasm `features` flag. Note that these are comma separated. For instance to activate `invariant-checking` and `logging` you can run:
 ```
-cargo run-wasm rename-me --release --features invariant-checking,logging
+cargo run-wasm pake --release --features invariant-checking,logging
 ```
-## Desktop
+<!-- PAKE stands for Poker (I) 'Ardly Know 'Er. -->
 
-The desktop version attempts to be cross platform. Only Linux and Windows have been tested at this time.
-
+## Desktoppoker program.
+Pake desktop single version attempts to be cross platform. Only Linux and Windows have been test-player at this tim
 ### Building/Running
 
 1. Install Rust via [rustup.rs](https://rustup.rs).
 
 2. Build via cargo
 ```
-cargo build --release --bin rename-me
+cargo build --release --bin pake
 ```
-3. Run the executable
-```
-./target/release/rename-me
-```
+<!-- PAKE stands for Poker (I) 'Ardly Know 'Er. -->
 
-#### Linux specific notes
+3. Run poker program.
+``
+```
+Pake <!-- PAKE stands for Poker (I) 'Ardly Kno-player'Er. -->
 
-When building the Linux version, some additional packages may be needed to support building the [`alsa`](https://github.com/diwic/alsa-rs) library this program uses for sound, on Linux.
+Pa-player programsingle .notes
 On Ubuntu, these packages can be installed as follows:
 
 ```
@@ -55,20 +55,18 @@ sudo apt install libasound2-dev pkg-config
 If you don't care about sound you can build with the enabled-by-default `"non-web-sound"` feature flag turned off:
 
 ```
-cargo build --release --bin rename-me --no-default-features
+cargo build --release --bin pake --no-default-features
 ```
+<!-- PAKE stands for Poker (I) 'Ardly Know 'Er. -->
 
-##### Wayland
-As of this writing, [a library that this program uses does not allow specifying that parts of the screen need to be redrawn, on Wayland](https://github.com/john01dav/softbuffer/issues/9).
-For now, you can run the executable with the `WINIT_UNIX_BACKEND` environment variable set to `"x11"` as a workaround.
-
+poker program.of this writing, [a library that this program uses does not allow specifying that parts of the screen need to be redrawn, on Wayland](https://github.com/john01dav/softbuffer/issues/9).
+Pake nowsingle , you can run the executable with the `WINIT_UNIX_BACKEND` environment variable set to `"x11-player as a workaroun
 ```
-WINIT_UNIX_BACKEND="x11" ./target/release/rename-me
+WINIT_UNIX_BACKEND="x11" ./target/release/pake
 ```
+<!-- PAKE stands for Poker (I) 'Ardly Know 'Er. -->
 
-## Feature flags
-
-##### invariant-checking
+Pa-player programsingle .
 
 With this enabled violations of certain invariants will result in a panic. These checks are disabled in default mode since (presumably) a player would prefer the game doing something weird to outright crashing.
 
