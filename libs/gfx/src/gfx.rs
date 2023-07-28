@@ -1,6 +1,6 @@
 use models::{Card, Rank, Suit, get_rank, get_suit, suits};
 
-use platform_types::{ARGB, Command, PALETTE, sprite, unscaled, command::{self, Rect}, PaletteIndex, FONT_BASE_Y, FONT_WIDTH};
+use platform_types::{ARGB, Command, PALETTE, sprite, unscaled, command::{self, Rect}, PaletteIndex, FONT_BASE_Y, FONT_WIDTH, GFX_WIDTH};
 
 #[derive(Default)]
 pub struct Commands {
@@ -75,10 +75,14 @@ impl Commands {
         x: unscaled::X,
         y: unscaled::Y
     ) {
+        type Inner = sprite::Inner;
+        let suit = get_suit(card);
+        let rank = get_rank(card);
+
         self.sspr(
             sprite::XY {
-                x: sprite::X(card::FRONT_SPRITE_X as _),
-                y: sprite::Y(card::FRONT_SPRITE_Y as _),
+                x: sprite::X(card::BASE_X as Inner + rank as Inner * card::WIDTH.get()),
+                y: sprite::Y(card::BASE_Y as Inner + suit as Inner * card::HEIGHT.get()),
             },
             Rect::from_unscaled(unscaled::Rect {
                 x,
@@ -86,36 +90,6 @@ impl Commands {
                 w: card::WIDTH,
                 h: card::HEIGHT,
             })
-        );
-
-        let (colour, suit_char) = get_suit_colour_and_char(get_suit(card));
-
-        let rank_char = get_rank_char(card);
-
-        self.print_char(
-            rank_char,
-            x + card::LEFT_RANK_EDGE_W,
-            y + card::LEFT_RANK_EDGE_H,
-            colour,
-        );
-        self.print_char(
-            suit_char,
-            x + card::LEFT_SUIT_EDGE_W,
-            y + card::LEFT_SUIT_EDGE_H,
-            colour,
-        );
-
-        self.print_char(
-            rank_char | FONT_FLIP,
-            x + card::RIGHT_RANK_EDGE_W,
-            y + card::RIGHT_RANK_EDGE_H,
-            colour,
-        );
-        self.print_char(
-            suit_char | FONT_FLIP,
-            x + card::RIGHT_SUIT_EDGE_W,
-            y + card::RIGHT_SUIT_EDGE_H,
-            colour,
         );
     }
 }
@@ -125,11 +99,11 @@ pub mod card {
 
     use unscaled::{W, H, w_const_add, w_const_sub, h_const_add, h_const_sub};
 
-    pub const WIDTH: W = W(20);
-    pub const HEIGHT: H = H(30);
+    pub const WIDTH: W = W(42);
+    pub const HEIGHT: H = H(60);
 
-    pub const FRONT_SPRITE_X: u8 = 2;
-    pub const FRONT_SPRITE_Y: u8 = 1;
+    pub const BASE_X: u16 = 436;
+    pub const BASE_Y: u16 = 0;
 
     pub const LEFT_RANK_EDGE_W: W = W(3);
     pub const LEFT_RANK_EDGE_H: H = H(3);

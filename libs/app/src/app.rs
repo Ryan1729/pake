@@ -22,7 +22,6 @@ impl State {
         features::log(&format!("{:?}", seed));
 
         let mut game_state = game::State::new(seed);
-        //game_state.add_splat();
 
         Self {
             game_state,
