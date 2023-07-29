@@ -1,4 +1,4 @@
-use models::{Card, Rank, Suit, get_rank, get_suit, suits};
+use models::{Card, Rank, Suit, holdem, get_rank, get_suit, suits};
 
 use platform_types::{ARGB, Command, PALETTE, sprite, unscaled, command::{self, Rect}, PaletteIndex, FONT_BASE_Y, FONT_WIDTH, GFX_WIDTH};
 
@@ -67,6 +67,16 @@ impl Commands {
                 colour_override: PALETTE[colour as usize],
             }
         );
+    }
+
+    pub fn draw_holdem_hand(
+        &mut self,
+        hand: holdem::Hand,
+        x: unscaled::X,
+        y: unscaled::Y
+    ) {
+        self.draw_card(hand[0], x, y);
+        self.draw_card(hand[1], x + card::WIDTH/2, y);
     }
 
     pub fn draw_card(
