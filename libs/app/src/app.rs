@@ -1,5 +1,5 @@
 use game::Splat;
-use gfx::{Commands};
+use gfx::{Commands, card};
 use platform_types::{command, sprite, unscaled, Button, Input, Speaker, SFX};
 pub use platform_types::StateParams;
 
@@ -74,6 +74,10 @@ fn update(state: &mut game::State, input: Input, speaker: &mut Speaker) {
 fn render(commands: &mut Commands, state: &game::State) {
     for &Splat { hand, x, y } in &state.splats {
         commands.draw_holdem_hand(hand, x, y);
+
+        let chars = [gfx::get_rank_char(hand[0]), gfx::get_rank_char(hand[1])];
+
+        commands.print_chars(&chars, x, y + card::HEIGHT, 3);
     }
 }
 

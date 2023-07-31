@@ -69,6 +69,20 @@ impl Commands {
         );
     }
 
+    pub fn print_chars(
+        &mut self,
+        characters: &[u8], 
+        x: unscaled::X,
+        y: unscaled::Y,
+        colour: PaletteIndex
+    ) {
+        let mut at_x = x;
+        for &character in characters {
+            self.print_char(character, at_x, y, colour);
+            at_x += CHAR_ADVANCE;
+        }
+    }
+
     pub fn draw_holdem_hand(
         &mut self,
         hand: holdem::Hand,
@@ -185,6 +199,7 @@ pub fn get_rank_char_from_rank(rank: Rank) -> u8 {
 }
 
 pub const CHAR_SIZE: u8 = 8;
+pub const CHAR_ADVANCE: unscaled::W = unscaled::W(4);
 pub const CHAR_W: unscaled::W = unscaled::W(CHAR_SIZE as _);
 pub const CHAR_H: unscaled::H = unscaled::H(CHAR_SIZE as _);
 
