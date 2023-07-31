@@ -72,12 +72,14 @@ fn update(state: &mut game::State, input: Input, speaker: &mut Speaker) {
 
 #[inline]
 fn render(commands: &mut Commands, state: &game::State) {
-    for &Splat { hand, x, y } in &state.splats {
+    for Splat { hand, x, y, evaluation } in &state.splats {
+        let hand = *hand;
+        let x = *x;
+        let y = *y;
+
         commands.draw_holdem_hand(hand, x, y);
 
-        let chars = [gfx::get_rank_char(hand[0]), gfx::get_rank_char(hand[1])];
-
-        commands.print_chars(&chars, x, y + card::HEIGHT, 3);
+        commands.print_chars(evaluation.as_bytes(), x, y + card::HEIGHT, 3);
     }
 }
 

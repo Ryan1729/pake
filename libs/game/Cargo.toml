@@ -7,6 +7,9 @@ edition = "2021"
 [lib]
 path = "src/game.rs"
 
+[dependencies.evaluate]
+path = "../evaluate"
+
 [dependencies.models]
 path = "../models"
 

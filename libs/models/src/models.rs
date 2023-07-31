@@ -66,6 +66,10 @@ pub mod holdem {
                 output
             }
         }
+
+        pub fn burn(&mut self) {
+            self.draw();
+        }
     }
 
     pub fn gen_deck(rng: &mut Xs) -> Deck {
@@ -76,6 +80,21 @@ pub mod holdem {
         xs::shuffle(rng, &mut output.cards);
 
         output
+    }
+
+    pub type Flop = [Card; 3];
+
+    #[derive(Clone, Copy)]
+    pub enum CommunityCards {
+        Flop(Flop),
+        Turn(Flop, Card),
+        River(Flop, Card, Card),
+    }
+
+    impl Default for CommunityCards {
+        fn default() -> Self {
+            Self::Flop(<_>::default())
+        }
     }
 }
 
