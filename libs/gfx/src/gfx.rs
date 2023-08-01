@@ -93,6 +93,41 @@ impl Commands {
         self.draw_card(hand[1], x + card::WIDTH/2, y);
     }
 
+    pub fn draw_holdem_community_cards(
+        &mut self,
+        cards: holdem::CommunityCards,
+        x: unscaled::X,
+        y: unscaled::Y
+    ) {
+        let mut at_x = x;
+        macro_rules! step {
+            ($card: ident) => {
+                self.draw_card($card, at_x, y);
+                at_x += card::WIDTH;
+            }
+        }
+        match cards {
+            holdem::CommunityCards::Flop(flop) => {
+                for card in flop {
+                    step!(card);
+                }
+            }
+            holdem::CommunityCards::Turn(flop, turn) => {
+                for card in flop {
+                    step!(card);
+                }
+                step!(turn);
+            }
+            holdem::CommunityCards::River(flop, turn, river) => {
+                for card in flop {
+                    step!(card);
+                }
+                step!(turn);
+                step!(river);
+            }
+        }
+    }
+
     pub fn draw_card(
         &mut self,
         card: Card,

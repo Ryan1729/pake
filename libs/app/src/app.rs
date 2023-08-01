@@ -72,6 +72,12 @@ fn update(state: &mut game::State, input: Input, speaker: &mut Speaker) {
 
 #[inline]
 fn render(commands: &mut Commands, state: &game::State) {
+    commands.draw_holdem_community_cards(
+        state.community_cards,
+        unscaled::X(150),
+        unscaled::Y(150),
+    );
+
     for Splat { hand, x, y, evaluation } in &state.splats {
         let hand = *hand;
         let x = *x;
