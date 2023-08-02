@@ -53,6 +53,40 @@ pub fn holdem_hand(community_cards: holdem::CommunityCards, hand: holdem::Hand) 
         },
     };
 
+    // Measuring time {
+    
+    let all_other_cards: Vec<_> = ALL_CARDS
+        .iter()
+        .filter(|&&card| {
+            card != to_poker_card(hand[0]) && card != to_poker_card(hand[1])
+        })
+        .collect();
+    const OTHER_CARDS_LEN: usize = ALL_CARDS.len() - 2;
+    assert_eq!(all_other_cards.len(), OTHER_CARDS_LEN);
+    let mut mask: u64 = 0;
+    let mut selected: Vec<poker::Card> = Vec::with_capacity(3);
+    while mask < 1 << OTHER_CARDS_LEN {
+        if mask.count_ones() == 3 {
+            //dbg!(mask);
+            selected.clear();
+            for c in all_other_cards.iter()
+                .enumerate()
+                .filter(|(index, _)| (mask >> index) & 1 == 0)
+                .map(|(_, e)| **e) {
+                selected.push(c);
+            }
+            match poker::evaluate::static_lookup::evaluate(&selected) {
+                Err(err) => {
+                    debug_assert!(false, "evaluate Err: {err}");
+                    return Eval::default()
+                },
+                _ => {}
+            }
+        }
+        mask += 1;
+    }
+    // }
+
     match poker::evaluate::static_lookup::evaluate(&cards[..len]) {
         Ok(eval) => Eval(eval),
         Err(err) => {
@@ -62,7 +96,7 @@ pub fn holdem_hand(community_cards: holdem::CommunityCards, hand: holdem::Hand) 
     }
 }
 
-fn to_poker_card(card: models::Card) -> poker::Card {
+const fn to_poker_card(card: models::Card) -> poker::Card {
     let rank = models::get_rank(card);
 
     let suit = models::get_suit(card);
@@ -92,3 +126,58 @@ fn to_poker_card(card: models::Card) -> poker::Card {
         },
     )
 }
+
+const ALL_CARDS: [poker::Card; 52] = [
+    poker::Card::new(poker::Rank::Two, poker::Suit::Clubs),
+    poker::Card::new(poker::Rank::Two, poker::Suit::Diamonds),
+    poker::Card::new(poker::Rank::Two, poker::Suit::Hearts),
+    poker::Card::new(poker::Rank::Two, poker::Suit::Spades),
+    poker::Card::new(poker::Rank::Three, poker::Suit::Clubs),
+    poker::Card::new(poker::Rank::Three, poker::Suit::Diamonds),
+    poker::Card::new(poker::Rank::Three, poker::Suit::Hearts),
+    poker::Card::new(poker::Rank::Three, poker::Suit::Spades),
+    poker::Card::new(poker::Rank::Four, poker::Suit::Clubs),
+    poker::Card::new(poker::Rank::Four, poker::Suit::Diamonds),
+    poker::Card::new(poker::Rank::Four, poker::Suit::Hearts),
+    poker::Card::new(poker::Rank::Four, poker::Suit::Spades),
+    poker::Card::new(poker::Rank::Five, poker::Suit::Clubs),
+    poker::Card::new(poker::Rank::Five, poker::Suit::Diamonds),
+    poker::Card::new(poker::Rank::Five, poker::Suit::Hearts),
+    poker::Card::new(poker::Rank::Five, poker::Suit::Spades),
+    poker::Card::new(poker::Rank::Six, poker::Suit::Clubs),
+    poker::Card::new(poker::Rank::Six, poker::Suit::Diamonds),
+    poker::Card::new(poker::Rank::Six, poker::Suit::Hearts),
+    poker::Card::new(poker::Rank::Six, poker::Suit::Spades),
+    poker::Card::new(poker::Rank::Seven, poker::Suit::Clubs),
+    poker::Card::new(poker::Rank::Seven, poker::Suit::Diamonds),
+    poker::Card::new(poker::Rank::Seven, poker::Suit::Hearts),
+    poker::Card::new(poker::Rank::Seven, poker::Suit::Spades),
+    poker::Card::new(poker::Rank::Eight, poker::Suit::Clubs),
+    poker::Card::new(poker::Rank::Eight, poker::Suit::Diamonds),
+    poker::Card::new(poker::Rank::Eight, poker::Suit::Hearts),
+    poker::Card::new(poker::Rank::Eight, poker::Suit::Spades),
+    poker::Card::new(poker::Rank::Nine, poker::Suit::Clubs),
+    poker::Card::new(poker::Rank::Nine, poker::Suit::Diamonds),
+    poker::Card::new(poker::Rank::Nine, poker::Suit::Hearts),
+    poker::Card::new(poker::Rank::Nine, poker::Suit::Spades),
+    poker::Card::new(poker::Rank::Ten, poker::Suit::Clubs),
+    poker::Card::new(poker::Rank::Ten, poker::Suit::Diamonds),
+    poker::Card::new(poker::Rank::Ten, poker::Suit::Hearts),
+    poker::Card::new(poker::Rank::Ten, poker::Suit::Spades),
+    poker::Card::new(poker::Rank::Jack, poker::Suit::Clubs),
+    poker::Card::new(poker::Rank::Jack, poker::Suit::Diamonds),
+    poker::Card::new(poker::Rank::Jack, poker::Suit::Hearts),
+    poker::Card::new(poker::Rank::Jack, poker::Suit::Spades),
+    poker::Card::new(poker::Rank::Queen, poker::Suit::Clubs),
+    poker::Card::new(poker::Rank::Queen, poker::Suit::Diamonds),
+    poker::Card::new(poker::Rank::Queen, poker::Suit::Hearts),
+    poker::Card::new(poker::Rank::Queen, poker::Suit::Spades),
+    poker::Card::new(poker::Rank::King, poker::Suit::Clubs),
+    poker::Card::new(poker::Rank::King, poker::Suit::Diamonds),
+    poker::Card::new(poker::Rank::King, poker::Suit::Hearts),
+    poker::Card::new(poker::Rank::King, poker::Suit::Spades),
+    poker::Card::new(poker::Rank::Ace, poker::Suit::Clubs),
+    poker::Card::new(poker::Rank::Ace, poker::Suit::Diamonds),
+    poker::Card::new(poker::Rank::Ace, poker::Suit::Hearts),
+    poker::Card::new(poker::Rank::Ace, poker::Suit::Spades),
+];
