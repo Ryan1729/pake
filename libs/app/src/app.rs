@@ -1,5 +1,6 @@
-use game::Splat;
-use gfx::{Commands, card};
+#![allow(unused_imports)]
+
+use gfx::{Commands, Highlighting::{Plain, Highlighted}, card};
 use platform_types::{command, sprite, unscaled, Button, Input, Speaker, SFX};
 pub use platform_types::StateParams;
 
@@ -36,7 +37,7 @@ impl platform_types::State for State {
     fn frame(&mut self) -> (&[platform_types::Command], &[SFX]) {
         self.commands.clear();
         self.speaker.clear();
-        update_and_render(
+        game::update_and_render(
             &mut self.commands,
             &mut self.game_state,
             self.input,
@@ -61,41 +62,4 @@ impl platform_types::State for State {
     fn release(&mut self, button: Button) {
         self.input.gamepad.remove(button);
     }
-}
-
-fn update(state: &mut game::State, input: Input, speaker: &mut Speaker) {
-    if input.gamepad != <_>::default() {
-        state.add_splat();
-        speaker.request_sfx(SFX::CardPlace);
-    }
-}
-
-#[inline]
-fn render(commands: &mut Commands, state: &game::State) {
-    commands.draw_holdem_community_cards(
-        state.community_cards,
-        unscaled::X(150),
-        unscaled::Y(150),
-    );
-
-    for Splat { hand, x, y, evaluation } in &state.splats {
-        let hand = *hand;
-        let x = *x;
-        let y = *y;
-
-        commands.draw_holdem_hand(hand, x, y);
-
-        commands.print_chars(evaluation.as_bytes(), x, y + card::HEIGHT, 3);
-    }
-}
-
-#[inline]
-fn update_and_render(
-    commands: &mut Commands,
-    state: &mut game::State,
-    input: Input,
-    speaker: &mut Speaker,
-) {
-    update(state, input, speaker);
-    render(commands, state);
 }

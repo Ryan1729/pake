@@ -1,6 +1,13 @@
 use models::{Card, Rank, Suit, holdem, get_rank, get_suit, suits};
 
-use platform_types::{ARGB, Command, PALETTE, sprite, unscaled, command::{self, Rect}, PaletteIndex, FONT_BASE_Y, FONT_WIDTH, GFX_WIDTH};
+use platform_types::{Command, PALETTE, sprite, unscaled, command::{self, Rect}, PaletteIndex, FONT_BASE_Y, FONT_WIDTH};
+
+#[derive(Copy, Clone, Default)]
+pub enum Highlighting {
+    #[default]
+    Plain,
+    Highlighted,
+}
 
 #[derive(Default)]
 pub struct Commands {
@@ -151,6 +158,201 @@ impl Commands {
             })
         );
     }
+
+    pub fn draw_up_chevron(
+        &mut self,
+        highlighting: Highlighting,
+        x: unscaled::X,
+        y: unscaled::Y
+    ) {
+        type Inner = sprite::Inner;
+        self.sspr(
+            sprite::XY {
+                x: sprite::X(chevron::BASE_X as Inner + highlighting as Inner * chevron::WIDTH.get() * 2),
+                y: sprite::Y(chevron::BASE_Y),
+            },
+            Rect::from_unscaled(unscaled::Rect {
+                x,
+                y,
+                w: chevron::WIDTH,
+                h: chevron::HEIGHT,
+            })
+        );
+    }
+
+    pub fn draw_down_chevron(
+        &mut self,
+        highlighting: Highlighting,
+        x: unscaled::X,
+        y: unscaled::Y
+    ) {
+        type Inner = sprite::Inner;
+        self.sspr(
+            sprite::XY {
+                x: sprite::X(chevron::BASE_X as Inner + chevron::WIDTH.get() + highlighting as Inner * chevron::WIDTH.get() * 2),
+                y: sprite::Y(chevron::BASE_Y),
+            },
+            Rect::from_unscaled(unscaled::Rect {
+                x,
+                y,
+                w: chevron::WIDTH,
+                h: chevron::HEIGHT,
+            })
+        );
+    }
+}
+
+#[derive(Clone, Copy)]
+pub enum NineSlice {
+    Window,
+    Button,
+    ButtonHot,
+    ButtonPressed,
+}
+
+impl NineSlice {
+    pub const CELL_W: unscaled::W = unscaled::W(8);
+    pub const CELL_H: unscaled::H = unscaled::H(8);
+
+    pub const GRID_W: unscaled::W = unscaled::W(24);
+    pub const GRID_H: unscaled::H = unscaled::H(24);
+
+    const BASE: sprite::XY = sprite::XY {
+        x: sprite::X(FONT_WIDTH as _),
+        y: sprite::Y(0),
+    };
+
+    fn top_left(self) -> sprite::XY {
+        NineSlice::BASE 
+        + NineSlice::GRID_W
+        * match self {
+            NineSlice::Window => 0,
+            NineSlice::Button => 1,
+            NineSlice::ButtonHot => 2,
+            NineSlice::ButtonPressed => 3,
+        }
+    }
+}
+
+impl Commands {
+    pub fn draw_nine_slice(
+        &mut self,
+        nine_slice: NineSlice,
+        unscaled::Rect { x, y, w, h }: unscaled::Rect,
+    ) {
+        const WIDTH: unscaled::W = NineSlice::CELL_W;
+        const HEIGHT: unscaled::H = NineSlice::CELL_H;
+
+        macro_rules! r {
+            ($x: ident, $y: ident $(,)?) => {
+                Rect::from_unscaled(unscaled::Rect {
+                    x: $x,
+                    y: $y,
+                    w: WIDTH,
+                    h: HEIGHT,
+                })
+            };
+        }
+
+        let top_left: sprite::XY = nine_slice.top_left();
+
+        let top: sprite::XY = top_left + WIDTH;
+        let top_right: sprite::XY = top + WIDTH;
+
+        let middle_left: sprite::XY = top_left + HEIGHT;
+        let middle: sprite::XY = top + HEIGHT;
+        let middle_right: sprite::XY = top_right + HEIGHT;
+
+        let bottom_left: sprite::XY = middle_left + HEIGHT;
+        let bottom: sprite::XY = middle + HEIGHT;
+        let bottom_right: sprite::XY = middle_right + HEIGHT;
+
+        let after_left_corner = x.saturating_add(WIDTH);
+        let before_right_corner = x.saturating_add(w).saturating_sub(WIDTH);
+
+        let below_top_corner = y.saturating_add(HEIGHT);
+        let above_bottom_corner = y.saturating_add(h).saturating_sub(HEIGHT);
+
+        macro_rules! step_by {
+            (
+                for $element: ident in $start: ident .. $end: ident 
+                step_by $by: ident 
+                $body: block
+            ) => ({
+                let mut $element = $start;
+                while $element < $end {
+                    $body
+
+                    $element += $by;
+                }
+            })
+        }
+
+        step_by!(
+            for fill_y in below_top_corner..above_bottom_corner
+            step_by HEIGHT {
+                step_by!(
+                    for fill_x in after_left_corner..before_right_corner
+                    step_by WIDTH {
+                        self.sspr(
+                            middle,
+                            r!(fill_x, fill_y),
+                        );
+                    }
+                )
+            }
+        );
+
+        step_by!(
+            for fill_x in after_left_corner..before_right_corner
+            step_by WIDTH {
+                self.sspr(
+                    top,
+                    r!(fill_x, y),
+                );
+    
+                self.sspr(
+                    bottom,
+                    r!(fill_x, above_bottom_corner),
+                );
+            }
+        );
+
+        step_by!(
+            for fill_y in below_top_corner..above_bottom_corner
+            step_by HEIGHT {
+                self.sspr(
+                    middle_left,
+                    r!(x, fill_y),
+                );
+    
+                self.sspr(
+                    middle_right,
+                    r!(before_right_corner, fill_y),
+                );
+            }
+        );
+
+        self.sspr(
+            top_left,
+            r!(x, y),
+        );
+
+        self.sspr(
+            top_right,
+            r!(before_right_corner, y),
+        );
+
+        self.sspr(
+            bottom_left,
+            r!(x, above_bottom_corner),
+        );
+
+        self.sspr(
+            bottom_right,
+            r!(before_right_corner, above_bottom_corner),
+        );
+    }
 }
 
 pub mod card {
@@ -187,6 +389,18 @@ pub mod card {
         HEIGHT, 
         h_const_add(LEFT_SUIT_EDGE_H, CHAR_H)
     );
+}
+
+pub mod chevron {
+    use super::*;
+
+    use unscaled::{W, H};
+
+    pub const WIDTH: W = W(24);
+    pub const HEIGHT: H = H(12);
+
+    pub const BASE_X: u16 = 128;
+    pub const BASE_Y: u16 = 24;
 }
 
 pub const TEN_CHAR: u8 = 27;
@@ -240,3 +454,21 @@ pub const CHAR_H: unscaled::H = unscaled::H(CHAR_SIZE as _);
 
 pub const FONT_FLIP: u8 = 128;
 
+pub type TextLength = unscaled::Inner;
+
+pub fn center_line_in_rect(
+    text_length: TextLength,
+    rect: unscaled::Rect
+) -> unscaled::XY {
+    let unscaled::Rect { x, y, w, h } = rect;
+
+    let mut xy = unscaled::XY {
+        x: x + (w / 2),
+        y: y + (h / 2),
+    };
+
+    xy.x -= unscaled::W((CHAR_ADVANCE * text_length).get() / 2);
+    xy.y -= unscaled::H(CHAR_H.get() / 2);
+
+    xy
+}

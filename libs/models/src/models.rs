@@ -37,6 +37,17 @@ pub mod holdem {
 
     pub type Hand = [Card; 2];
 
+    pub type HandLen = u8;
+
+    #[derive(Clone, Debug)]
+    pub struct Hands {
+        /// With 52 cards, and 5 community cards, and 3 burn cards,
+        /// that leaves 44 cards left over so the maximum amount of
+        /// possible hands is 22.
+        hands: [Hand; 22],
+        len: HandLen,
+    }
+
     type CardIndex = u8;
 
     #[derive(Clone, Debug)]

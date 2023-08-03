@@ -53,40 +53,6 @@ pub fn holdem_hand(community_cards: holdem::CommunityCards, hand: holdem::Hand) 
         },
     };
 
-    // Measuring time {
-    
-    let all_other_cards: Vec<_> = ALL_CARDS
-        .iter()
-        .filter(|&&card| {
-            card != to_poker_card(hand[0]) && card != to_poker_card(hand[1])
-        })
-        .collect();
-    const OTHER_CARDS_LEN: usize = ALL_CARDS.len() - 2;
-    assert_eq!(all_other_cards.len(), OTHER_CARDS_LEN);
-    let mut mask: u64 = 0;
-    let mut selected: Vec<poker::Card> = Vec::with_capacity(3);
-    while mask < 1 << OTHER_CARDS_LEN {
-        if mask.count_ones() == 3 {
-            //dbg!(mask);
-            selected.clear();
-            for c in all_other_cards.iter()
-                .enumerate()
-                .filter(|(index, _)| (mask >> index) & 1 == 0)
-                .map(|(_, e)| **e) {
-                selected.push(c);
-            }
-            match poker::evaluate::static_lookup::evaluate(&selected) {
-                Err(err) => {
-                    debug_assert!(false, "evaluate Err: {err}");
-                    return Eval::default()
-                },
-                _ => {}
-            }
-        }
-        mask += 1;
-    }
-    // }
-
     match poker::evaluate::static_lookup::evaluate(&cards[..len]) {
         Ok(eval) => Eval(eval),
         Err(err) => {
@@ -127,6 +93,7 @@ const fn to_poker_card(card: models::Card) -> poker::Card {
     )
 }
 
+#[allow(unused)]
 const ALL_CARDS: [poker::Card; 52] = [
     poker::Card::new(poker::Rank::Two, poker::Suit::Clubs),
     poker::Card::new(poker::Rank::Two, poker::Suit::Diamonds),
