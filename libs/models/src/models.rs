@@ -144,15 +144,75 @@ pub mod holdem {
                 TwentyTwo => "22",
             }
         }
+
+        pub fn u8(self) -> u8 {
+            use HandLen::*;
+            match self {
+                Two => 2,
+                Three => 3,
+                Four => 4,
+                Five => 5,
+                Six => 6,
+                Seven => 7,
+                Eight => 8,
+                Nine => 9,
+                Ten => 10,
+                Eleven => 11,
+                Twelve => 12,
+                Thirteen => 13,
+                Fourteen => 14,
+                Fifteen => 15,
+                Sixteen => 16,
+                Seventeen => 17,
+                Eightteen => 18,
+                Nineteen => 19,
+                Twenty => 20,
+                TwentyOne => 21,
+                TwentyTwo => 22,
+            }
+        }
+
+        pub fn usize(self) -> usize {
+            usize::from(self.u8())
+        }
     }
 
-    #[derive(Clone, Debug)]
+    #[derive(Clone, Debug, Default)]
     pub struct Hands {
         /// With 52 cards, and 5 community cards, and 3 burn cards,
         /// that leaves 44 cards left over so the maximum amount of
         /// possible hands is 22.
         hands: [Hand; 22],
         len: HandLen,
+    }
+    
+    pub fn deal(
+        rng: &mut Xs,
+        player_count: HandLen,
+    ) -> (Hands, Deck) {
+        let mut deck = gen_deck(rng);
+
+        let mut hands = Hands::default();
+
+        let mut count = player_count.usize();
+
+        for hand in (&mut hands.hands[0..count]).iter_mut() {
+            let (Some(card1), Some(card2)) = (deck.draw(), deck.draw())
+                else { continue };
+            *hand = [card1, card2];
+        }
+
+        hands.len = player_count;
+
+        dbg!(hands, deck)
+        //deck.burn();
+        //let [Some(card1), Some(card2), Some(card3)] = 
+            //[deck.draw(), deck.draw(), deck.draw()] 
+            //else {
+                //debug_assert!(false, "Ran out of cards with fresh deck!?");
+                //return Self::default() 
+            //};
+        //community_cards: CommunityCards::Flop([card1, card2, card3]),
     }
 
     type CardIndex = u8;

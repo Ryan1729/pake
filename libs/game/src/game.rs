@@ -9,9 +9,11 @@ use xs::{Xs, Seed};
 pub enum HoldemTable {
     Undealt { player_count: HandLen },
     PreFlop {
+        deck: Deck,
         hands: Hands,
     },
     PostFlop {
+        deck: Deck,
         hands: Hands,
         community_cards: CommunityCards,
     },
@@ -30,26 +32,13 @@ pub struct State {
     pub rng: Xs,
     pub ctx: ui::Context,
     pub table: HoldemTable,
-    pub deck: Deck,
 }
 
 impl State {
     pub fn new(seed: Seed) -> State {
         let mut rng = xs::from_seed(seed);
 
-        let deck = gen_deck(&mut rng);
-
-        //deck.burn();
-        //let [Some(card1), Some(card2), Some(card3)] = 
-            //[deck.draw(), deck.draw(), deck.draw()] 
-            //else {
-                //debug_assert!(false, "Ran out of cards with fresh deck!?");
-                //return Self::default() 
-            //};
-        //community_cards: CommunityCards::Flop([card1, card2, card3]),
-
         State {
-            deck,
             rng,
             .. <_>::default()
         }
@@ -275,7 +264,11 @@ pub fn update_and_render(
                     text: b"submit",
                 }
             ) {
-                dbg!();
+                let (hands, deck) = models::holdem::deal(&mut state.rng, *player_count);
+                state.table = PreFlop {
+                    hands,
+                    deck
+                };
             } else {
                 match group.ctx.hot {
                     PlayerCountSelect => {
@@ -306,10 +299,10 @@ pub fn update_and_render(
                 }
             }
         },
-        PreFlop { hands } => {
+        PreFlop { hands, deck: _ } => {
             draw_holdem_hands!(hands);
         },
-        PostFlop { hands, community_cards } => {
+        PostFlop { hands, deck: _, community_cards } => {
             commands.draw_holdem_community_cards(
                 *community_cards,
                 unscaled::X(150),
