@@ -72,6 +72,7 @@ mod ui {
     pub enum Id {
         #[default]
         Zero,
+        Submit,
         PlayerCountSelect,
     }
 
@@ -234,8 +235,6 @@ pub fn update_and_render(
         Undealt { ref mut player_count } => {
             let group = new_group!();
 
-            group.ctx.set_next_hot(PlayerCountSelect);
-
             let player_count_rect = unscaled::Rect {
                 x: unscaled::X(150),
                 y: unscaled::Y(100),
@@ -263,22 +262,49 @@ pub fn update_and_render(
                 PlayerCountSelect,
             );
 
-            match state.ctx.hot {
-                PlayerCountSelect => {
-                    match input.dir_pressed_this_frame() {
-                        Some(Dir::Up) => {
-                            *player_count = player_count.saturating_add_1();
-                        },
-                        Some(Dir::Down) => {
-                            *player_count = player_count.saturating_sub_1();
-                        },
-                        _ => {}
-                    }
-                    
+            if do_button(
+                group,
+                ButtonSpec {
+                    id: Submit,
+                    rect: unscaled::Rect {
+                        x: player_count_rect.x + player_count_rect.w,
+                        y: unscaled::Y(100),
+                        w: unscaled::W(50),
+                        h: unscaled::H(100),
+                    },
+                    text: b"submit",
                 }
-                Zero => {}
+            ) {
+                dbg!();
+            } else {
+                match group.ctx.hot {
+                    PlayerCountSelect => {
+                        match input.dir_pressed_this_frame() {
+                            Some(Dir::Up) => {
+                                *player_count = player_count.saturating_add_1();
+                            },
+                            Some(Dir::Down) => {
+                                *player_count = player_count.saturating_sub_1();
+                            },
+                            Some(Dir::Left | Dir::Right) => {
+                                group.ctx.set_next_hot(Submit);
+                            }
+                            None => {}
+                        }
+                    }
+                    Submit => {
+                        match input.dir_pressed_this_frame() {
+                            Some(Dir::Left | Dir::Right) => {
+                                group.ctx.set_next_hot(PlayerCountSelect);
+                            }
+                            _ => {}
+                        }
+                    }
+                    Zero => {
+                        group.ctx.set_next_hot(PlayerCountSelect);
+                    }
+                }
             }
-            
         },
         PreFlop { hands } => {
             draw_holdem_hands!(hands);
