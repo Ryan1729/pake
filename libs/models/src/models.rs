@@ -37,7 +37,114 @@ pub mod holdem {
 
     pub type Hand = [Card; 2];
 
-    pub type HandLen = u8;
+    #[derive(Copy, Clone, Debug, Default)]
+    pub enum HandLen {
+        #[default]
+        Two,
+        Three,
+        Four,
+        Five,
+        Six,
+        Seven,
+        Eight,
+        Nine,
+        Ten,
+        Eleven,
+        Twelve,
+        Thirteen,
+        Fourteen,
+        Fifteen,
+        Sixteen,
+        Seventeen,
+        Eightteen,
+        Nineteen,
+        Twenty,
+        TwentyOne,
+        TwentyTwo,
+    }
+
+    impl HandLen {
+        pub fn saturating_add_1(self) -> Self {
+            use HandLen::*;
+            match self {
+                Two => Three,
+                Three => Four,
+                Four => Five,
+                Five => Six,
+                Six => Seven,
+                Seven => Eight,
+                Eight => Nine,
+                Nine => Ten,
+                Ten => Eleven,
+                Eleven => Twelve,
+                Twelve => Thirteen,
+                Thirteen => Fourteen,
+                Fourteen => Fifteen,
+                Fifteen => Sixteen,
+                Sixteen => Seventeen,
+                Seventeen => Eightteen,
+                Eightteen => Nineteen,
+                Nineteen => Twenty,
+                Twenty => TwentyOne,
+                TwentyOne 
+                | TwentyTwo => TwentyTwo,
+            }
+        }
+
+        pub fn saturating_sub_1(self) -> Self {
+            use HandLen::*;
+            match self {
+                Two 
+                | Three => Two,
+                Four => Three,
+                Five => Four,
+                Six => Five,
+                Seven => Six,
+                Eight => Seven,
+                Nine => Eight,
+                Ten => Nine,
+                Eleven => Ten,
+                Twelve => Eleven,
+                Thirteen => Twelve,
+                Fourteen => Thirteen,
+                Fifteen => Fourteen,
+                Sixteen => Fifteen,
+                Seventeen => Sixteen,
+                Eightteen => Seventeen,
+                Nineteen => Eightteen,
+                Twenty => Nineteen,
+                TwentyOne => Twenty,
+                TwentyTwo => TwentyOne,
+            }
+        }
+
+        pub fn text(self) -> &'static str {
+            use HandLen::*;
+            match self {
+                Two => "2",
+                Three => "3",
+                Four => "4",
+                Five => "5",
+                Six => "6",
+                Seven => "7",
+                Eight => "8",
+                Nine => "9",
+                Ten => "10",
+                Eleven => "11",
+                Twelve => "12",
+                Thirteen => "13",
+                Fourteen => "14",
+                Fifteen => "15",
+                Sixteen => "16",
+                Seventeen => "17",
+                Eightteen => "18",
+                Nineteen => "19",
+                Twenty => "20",
+                TwentyOne => "21",
+                TwentyTwo => "22",
+            }
+        }
+    }
 
     #[derive(Clone, Debug)]
     pub struct Hands {

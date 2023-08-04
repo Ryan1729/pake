@@ -243,9 +243,7 @@ pub fn update_and_render(
                 h: unscaled::H(100),
             };
 
-            // TODO avoid allocating for this.
-            let player_count_string = player_count.to_string();
-            let player_count_text = player_count_string.as_bytes();
+            let player_count_text = player_count.text().as_bytes();
 
             let xy = gfx::center_line_in_rect(
                 player_count_text.len() as _,
@@ -269,10 +267,10 @@ pub fn update_and_render(
                 PlayerCountSelect => {
                     match input.dir_pressed_this_frame() {
                         Some(Dir::Up) => {
-                            *player_count = player_count.saturating_add(1);
+                            *player_count = player_count.saturating_add_1();
                         },
                         Some(Dir::Down) => {
-                            *player_count = player_count.saturating_sub(1);
+                            *player_count = player_count.saturating_sub_1();
                         },
                         _ => {}
                     }
