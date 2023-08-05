@@ -217,7 +217,41 @@ pub fn update_and_render(
 
     macro_rules! draw_holdem_hands {
         ($hands: ident) => {
-            // TODO
+            use platform_types::unscaled::xy;
+            let mut coords: [unscaled::XY; models::holdem::MAX_PLAYERS as usize] = [
+                xy!(0 0) ; models::holdem::MAX_PLAYERS as usize
+            ];
+            
+            let hand_width = gfx::card::WIDTH.get() + (gfx::card::WIDTH.get() / 2) + 5;
+            
+            {
+                let mut i = 0u8;
+                'outer: for y in 0..4 {
+                    for x in 0..7 {
+                        coords[usize::from(i)] = xy!(
+                            x * hand_width,
+                            y * ((gfx::card::HEIGHT.get() / 2) + 1)
+                        );
+
+                        i += 1;
+                        if i >= 22 {
+                            break 'outer;
+                        }
+                    }
+                }
+            }
+            
+            let mut i = 0;
+            for hand in $hands.iter() {
+                let at = coords[i];
+                commands.draw_holdem_hand(
+                    hand,
+                    at.x,
+                    at.y,
+                );
+
+                i += 1;
+            }
         }
     }
     match &mut state.table {

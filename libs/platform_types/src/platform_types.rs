@@ -247,6 +247,23 @@ pub mod unscaled {
         pub y: Y,
     }
 
+    #[macro_export]
+    macro_rules! _xy {
+        ($x: expr, $y: expr) => {
+            unscaled::XY {
+                x: unscaled::X($x),
+                y: unscaled::Y($y),
+            }
+        };
+        ($x: literal $(,)? $y: literal) => {
+            unscaled::XY {
+                x: unscaled::X($x),
+                y: unscaled::Y($y),
+            }
+        }
+    }
+    pub use _xy as xy;
+
     impl core::ops::AddAssign<W> for XY {
         fn add_assign(&mut self, other: W) {
             self.x += other;

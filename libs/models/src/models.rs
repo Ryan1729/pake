@@ -37,6 +37,11 @@ pub mod holdem {
 
     pub type Hand = [Card; 2];
 
+    /// With 52 cards, and 5 community cards, and 3 burn cards,
+    /// that leaves 44 cards left over so the maximum amount of
+    /// possible hands is 22.
+    pub const MAX_PLAYERS: u8 = 22;
+
     #[derive(Copy, Clone, Debug, Default)]
     pub enum HandLen {
         #[default]
@@ -179,11 +184,14 @@ pub mod holdem {
 
     #[derive(Clone, Debug, Default)]
     pub struct Hands {
-        /// With 52 cards, and 5 community cards, and 3 burn cards,
-        /// that leaves 44 cards left over so the maximum amount of
-        /// possible hands is 22.
-        hands: [Hand; 22],
+        hands: [Hand; MAX_PLAYERS as usize],
         len: HandLen,
+    }
+
+    impl Hands {
+        pub fn iter(&self) -> impl Iterator<Item = Hand> {
+            self.hands.into_iter().take(self.len.usize())
+        }
     }
     
     pub fn deal(
@@ -204,7 +212,7 @@ pub mod holdem {
 
         hands.len = player_count;
 
-        dbg!(hands, deck)
+        (hands, deck)
         //deck.burn();
         //let [Some(card1), Some(card2), Some(card3)] = 
             //[deck.draw(), deck.draw(), deck.draw()] 
