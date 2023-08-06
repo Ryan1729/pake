@@ -1,13 +1,15 @@
 #![allow(unused_imports)]
 
 use gfx::{Commands, Highlighting::{Highlighted, Plain}};
-use models::{Card, holdem::{CommunityCards, Deck, Hand, HandLen, Hands, gen_deck}};
+use models::{Card, holdem::{MAX_PLAYERS, CommunityCards, Deck, Hand, HandLen, Hands, gen_deck}};
 use platform_types::{Button, Dir, Input, Speaker, SFX, command, unscaled};
 use xs::{Xs, Seed};
 
+use std::io::Write;
+
 #[derive(Clone)]
-pub enum HoldemTable {
-    Undealt { player_count: HandLen },
+pub enum HoldemState {
+    Undealt { player_count: HandLen, starting_money: Money },
     PreFlop {
         deck: Deck,
         hands: Hands,
@@ -19,12 +21,29 @@ pub enum HoldemTable {
     },
 }
 
-impl Default for HoldemTable {
+impl Default for HoldemState {
     fn default() -> Self {
         Self::Undealt {
             player_count: <_>::default(),
+            starting_money: 500,
         }
     }
+}
+
+type Money = u32;
+
+type Personality = Option<CpuPersonality>;
+
+#[derive(Clone)]
+struct CpuPersonality {
+    // TODO
+}
+
+#[derive(Clone, Default)]
+pub struct HoldemTable {
+    state: HoldemState,
+    moneys: [Money; MAX_PLAYERS as usize],
+    personalities: [Personality; MAX_PLAYERS as usize],
 }
 
 #[derive(Clone, Default)]
@@ -63,6 +82,7 @@ mod ui {
         Zero,
         Submit,
         PlayerCountSelect,
+        StartingMoneySelect,
     }
 
     #[derive(Copy, Clone, Default, Debug)]
@@ -195,7 +215,7 @@ pub fn update_and_render(
     input: Input,
     speaker: &mut Speaker,
 ) {
-    use HoldemTable::*;
+    use HoldemState::*;
     use ui::Id::*;
 
     macro_rules! new_group {
@@ -254,12 +274,15 @@ pub fn update_and_render(
             }
         }
     }
-    match &mut state.table {
-        Undealt { ref mut player_count } => {
+    match &mut state.table.state {
+        Undealt { 
+            ref mut player_count,
+            ref mut starting_money,
+        } => {
             let group = new_group!();
 
             let player_count_rect = unscaled::Rect {
-                x: unscaled::X(150),
+                x: unscaled::X(100),
                 y: unscaled::Y(100),
                 w: unscaled::W(50),
                 h: unscaled::H(100),
@@ -267,17 +290,33 @@ pub fn update_and_render(
 
             let player_count_text = player_count.text().as_bytes();
 
-            let xy = gfx::center_line_in_rect(
-                player_count_text.len() as _,
-                player_count_rect,
-            );
+            {
+                let xy = gfx::center_line_in_rect(
+                    player_count_text.len() as _,
+                    player_count_rect,
+                );
+                group.commands.print_chars(
+                    player_count_text,
+                    xy.x,
+                    xy.y,
+                    6
+                );
+            }
+            {
+                let players_label = b"players";
 
-            group.commands.print_chars(
-                player_count_text,
-                xy.x,
-                xy.y,
-                6
-            );
+                let xy = gfx::center_line_in_rect(
+                    players_label.len() as _,
+                    player_count_rect,
+                );
+
+                group.commands.print_chars(
+                    players_label,
+                    xy.x,
+                    xy.y + gfx::CHAR_H,
+                    6
+                );
+            }
 
             ui::draw_quick_select(
                 group,
@@ -285,12 +324,55 @@ pub fn update_and_render(
                 PlayerCountSelect,
             );
 
+            let starting_money_rect = unscaled::Rect {
+                x: unscaled::X(150),
+                y: unscaled::Y(100),
+                w: unscaled::W(50),
+                h: unscaled::H(100),
+            };
+
+            let mut starting_money_text = [0 as u8; 20];
+            starting_money_text[0] = b'$';
+            let _cant_actually_fail = write!(
+                &mut starting_money_text[1..],
+                "{starting_money}"
+            );
+
+            let xy = gfx::center_line_in_rect(
+                {
+                    let mut len = 0;
+                    for i in 0..starting_money_text.len() as unscaled::Inner {
+                        // If it's max length, this being outside the `if`
+                        // ensures the length is accurate.
+                        len = i;
+                        if starting_money_text[usize::from(i)] == b'\0' {
+                            break;
+                        }
+                    }
+                    len
+                },
+                starting_money_rect,
+            );
+
+            group.commands.print_chars(
+                &starting_money_text,
+                xy.x,
+                xy.y,
+                6
+            );
+
+            ui::draw_quick_select(
+                group,
+                starting_money_rect,
+                StartingMoneySelect,
+            );
+
             if do_button(
                 group,
                 ButtonSpec {
                     id: Submit,
                     rect: unscaled::Rect {
-                        x: player_count_rect.x + player_count_rect.w,
+                        x: starting_money_rect.x + starting_money_rect.w,
                         y: unscaled::Y(100),
                         w: unscaled::W(50),
                         h: unscaled::H(100),
@@ -298,14 +380,48 @@ pub fn update_and_render(
                     text: b"submit",
                 }
             ) {
+                for i in 0..player_count.usize() {
+                    state.table.moneys[i] = *starting_money;
+                }
+
+                // TODO Make each element of this array user selectable too.
+                // Start at 1 to make the first player user controlled
+                for i in 1..player_count.usize() {
+                    state.table.personalities[i] = Some(CpuPersonality{});
+                }
+
                 let (hands, deck) = models::holdem::deal(&mut state.rng, *player_count);
-                state.table = PreFlop {
+                state.table.state = PreFlop {
                     hands,
                     deck
                 };
             } else {
+                let menu = [PlayerCountSelect, StartingMoneySelect, Submit];
+
                 match group.ctx.hot {
+                    StartingMoneySelect => {
+                        let menu_i = 1;
+                        match input.dir_pressed_this_frame() {
+                            Some(Dir::Up) => {
+                                *starting_money = starting_money.saturating_add(5);
+                            },
+                            Some(Dir::Down) => {
+                                *starting_money = starting_money.saturating_sub(5);
+                                if *starting_money == 0 {
+                                    *starting_money = 5;
+                                }
+                            },
+                            Some(Dir::Left) => {
+                                group.ctx.set_next_hot(menu[menu_i - 1]);
+                            }
+                            Some(Dir::Right) => {
+                                group.ctx.set_next_hot(menu[menu_i + 1]);
+                            }
+                            None => {}
+                        }
+                    }
                     PlayerCountSelect => {
+                        let menu_i = 0;
                         match input.dir_pressed_this_frame() {
                             Some(Dir::Up) => {
                                 *player_count = player_count.saturating_add_1();
@@ -313,22 +429,25 @@ pub fn update_and_render(
                             Some(Dir::Down) => {
                                 *player_count = player_count.saturating_sub_1();
                             },
-                            Some(Dir::Left | Dir::Right) => {
-                                group.ctx.set_next_hot(Submit);
+                            Some(Dir::Left) => {}
+                            Some(Dir::Right) => {
+                                group.ctx.set_next_hot(menu[menu_i + 1]);
                             }
                             None => {}
                         }
                     }
                     Submit => {
+                        let menu_i = menu.len() - 1;
                         match input.dir_pressed_this_frame() {
-                            Some(Dir::Left | Dir::Right) => {
-                                group.ctx.set_next_hot(PlayerCountSelect);
+                            Some(Dir::Left) => {
+                                group.ctx.set_next_hot(menu[menu_i - 1]);
                             }
+                            Some(Dir::Right) => {}
                             _ => {}
                         }
                     }
                     Zero => {
-                        group.ctx.set_next_hot(PlayerCountSelect);
+                        group.ctx.set_next_hot(menu[0]);
                     }
                 }
             }

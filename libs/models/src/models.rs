@@ -202,7 +202,7 @@ pub mod holdem {
 
         let mut hands = Hands::default();
 
-        let mut count = player_count.usize();
+        let count = player_count.usize();
 
         for hand in (&mut hands.hands[0..count]).iter_mut() {
             let (Some(card1), Some(card2)) = (deck.draw(), deck.draw())
