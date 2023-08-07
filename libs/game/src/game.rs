@@ -1,7 +1,7 @@
 #![allow(unused_imports)]
 
 use gfx::{Commands, Highlighting::{Highlighted, Plain}};
-use models::{Card, holdem::{MAX_PLAYERS, CommunityCards, Deck, Hand, HandLen, Hands, gen_deck}};
+use models::{Card, holdem::{MAX_PLAYERS, CommunityCards, Deck, Hand, HandIndex, HandLen, Hands, gen_deck}};
 use platform_types::{Button, Dir, Input, Speaker, SFX, command, unscaled};
 use xs::{Xs, Seed};
 
@@ -83,6 +83,7 @@ mod ui {
         Submit,
         PlayerCountSelect,
         StartingMoneySelect,
+        HoldemHand(HandIndex)
     }
 
     #[derive(Copy, Clone, Default, Debug)]
@@ -235,8 +236,23 @@ pub fn update_and_render(
         speaker.request_sfx(SFX::CardPlace);
     }
 
-    macro_rules! draw_holdem_hands {
-        ($hands: ident) => {
+    macro_rules! stack_money_text {
+        ($text:ident = $money: expr) => {
+            let mut money_text = [0 as u8; 20];
+            money_text[0] = b'$';
+            let _cant_actually_fail = write!(
+                &mut money_text[1..],
+                "{}",
+                $money
+            );
+
+            let $text = money_text;
+        }
+    }
+
+    macro_rules! do_holdem_hands {
+        ($group: ident $(,)? $hands: ident) => {
+            let group = $group;
             use platform_types::unscaled::xy;
             let mut coords: [unscaled::XY; models::holdem::MAX_PLAYERS as usize] = [
                 xy!(0 0) ; models::holdem::MAX_PLAYERS as usize
@@ -261,14 +277,66 @@ pub fn update_and_render(
                 }
             }
             
+            let hands_len = $hands.len().u8();
+
             let mut i = 0;
             for hand in $hands.iter() {
                 let at = coords[i];
-                commands.draw_holdem_hand(
+                group.commands.draw_holdem_hand(
                     hand,
                     at.x,
                     at.y,
                 );
+
+                match group.ctx.hot {
+                    HoldemHand(mut index) if usize::from(index) == i => {
+                        let corner_x = at.x + gfx::CHAR_W;
+                        let corner_y = at.y + gfx::card::HEIGHT + gfx::CHAR_H;
+
+                        stack_money_text!(money_text = state.table.moneys[i]);
+
+                        group.commands.draw_nine_slice(
+                            gfx::NineSlice::Button,
+                            unscaled::Rect {
+                                x: corner_x,
+                                y: corner_y,
+                                w: gfx::CHAR_W * (2 + pre_nul_len(&money_text)),
+                                h: gfx::CHAR_H * 3,
+                            }
+                        );
+
+                        group.commands.print_chars(
+                            &money_text,
+                            corner_x + gfx::CHAR_W,
+                            corner_y + gfx::CHAR_H,
+                            6
+                        );
+
+                        match input.dir_pressed_this_frame() {
+                            Some(Dir::Left) => {
+                                if index == 0 {
+                                    index = hands_len;
+                                }
+                                index -= 1;
+                                group.ctx.set_next_hot(HoldemHand(index));
+                            }
+                            Some(Dir::Right) => {
+                                index += 1;
+                                if index >= hands_len {
+                                    index = 0;
+                                }
+                                group.ctx.set_next_hot(HoldemHand(index));
+                            }
+                            _ => {
+                                group.ctx.set_next_hot(HoldemHand(index));
+                            }
+                        }
+                    }
+                    Zero => {
+                        group.ctx.set_next_hot(HoldemHand(0));
+                    }
+                    _ => {}
+                }
 
                 i += 1;
             }
@@ -331,26 +399,10 @@ pub fn update_and_render(
                 h: unscaled::H(100),
             };
 
-            let mut starting_money_text = [0 as u8; 20];
-            starting_money_text[0] = b'$';
-            let _cant_actually_fail = write!(
-                &mut starting_money_text[1..],
-                "{starting_money}"
-            );
+            stack_money_text!(starting_money_text = starting_money);
 
             let xy = gfx::center_line_in_rect(
-                {
-                    let mut len = 0;
-                    for i in 0..starting_money_text.len() as unscaled::Inner {
-                        // If it's max length, this being outside the `if`
-                        // ensures the length is accurate.
-                        len = i;
-                        if starting_money_text[usize::from(i)] == b'\0' {
-                            break;
-                        }
-                    }
-                    len
-                },
+                pre_nul_len(&starting_money_text),
                 starting_money_rect,
             );
 
@@ -449,20 +501,38 @@ pub fn update_and_render(
                     Zero => {
                         group.ctx.set_next_hot(menu[0]);
                     }
+                    _ => {}
                 }
             }
         },
         PreFlop { hands, deck: _ } => {
-            draw_holdem_hands!(hands);
+            let group = new_group!();
+            do_holdem_hands!(group, hands);
         },
         PostFlop { hands, deck: _, community_cards } => {
-            commands.draw_holdem_community_cards(
+            let group = new_group!();
+            group.commands.draw_holdem_community_cards(
                 *community_cards,
                 unscaled::X(150),
                 unscaled::Y(150),
             );
 
-            draw_holdem_hands!(hands);
+            do_holdem_hands!(group, hands);
         },
     }
+}
+
+fn pre_nul_len(
+    text: &[u8],
+) -> gfx::TextLength {
+    let mut len = 0;
+    for i in 0..text.len() as gfx::TextLength {
+        // If it's max length, this being outside the `if`
+        // ensures the length is accurate.
+        len = i;
+        if text[usize::from(i)] == b'\0' {
+            break;
+        }
+    }
+    len
 }

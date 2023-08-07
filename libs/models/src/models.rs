@@ -42,6 +42,8 @@ pub mod holdem {
     /// possible hands is 22.
     pub const MAX_PLAYERS: u8 = 22;
 
+    pub type HandIndex = u8;
+
     #[derive(Copy, Clone, Debug, Default)]
     pub enum HandLen {
         #[default]
@@ -191,6 +193,10 @@ pub mod holdem {
     impl Hands {
         pub fn iter(&self) -> impl Iterator<Item = Hand> {
             self.hands.into_iter().take(self.len.usize())
+        }
+
+        pub fn len(&self) -> HandLen {
+            self.len
         }
     }
     
