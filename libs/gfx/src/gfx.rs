@@ -92,12 +92,20 @@ impl Commands {
 
     pub fn draw_holdem_hand(
         &mut self,
-        hand: holdem::Hand,
+        facing: holdem::Facing,
         x: unscaled::X,
         y: unscaled::Y
     ) {
-        self.draw_card(hand[0], x, y);
-        self.draw_card(hand[1], x + card::WIDTH/2, y);
+        match facing {
+            holdem::Facing::Down => {
+                self.draw_card_back(x, y);
+                self.draw_card_back(x + card::WIDTH/2, y);
+            }
+            holdem::Facing::Up(hand) => {
+                self.draw_card(hand[0], x, y);
+                self.draw_card(hand[1], x + card::WIDTH/2, y);
+            },
+        }
     }
 
     pub fn draw_holdem_community_cards(
@@ -145,10 +153,39 @@ impl Commands {
         let suit = get_suit(card);
         let rank = get_rank(card);
 
+        self.draw_card_sprite(
+            rank as Inner,
+            suit as Inner,
+            x,
+            y,
+        );
+    }
+
+    pub fn draw_card_back(
+        &mut self,
+        x: unscaled::X,
+        y: unscaled::Y
+    ) {
+        self.draw_card_sprite(
+            13,
+            1,
+            x,
+            y,
+        );
+    }
+
+    fn draw_card_sprite(
+        &mut self,
+        sx: sprite::Inner,
+        sy: sprite::Inner,
+        x: unscaled::X,
+        y: unscaled::Y
+    ) {
+        type Inner = sprite::Inner;
         self.sspr(
             sprite::XY {
-                x: sprite::X(card::BASE_X as Inner + rank as Inner * card::WIDTH.get()),
-                y: sprite::Y(card::BASE_Y as Inner + suit as Inner * card::HEIGHT.get()),
+                x: sprite::X(card::BASE_X as Inner + sx * card::WIDTH.get()),
+                y: sprite::Y(card::BASE_Y as Inner + sy * card::HEIGHT.get()),
             },
             Rect::from_unscaled(unscaled::Rect {
                 x,

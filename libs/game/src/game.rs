@@ -1,7 +1,7 @@
 #![allow(unused_imports)]
 
 use gfx::{Commands, Highlighting::{Highlighted, Plain}};
-use models::{Card, holdem::{MAX_PLAYERS, CommunityCards, Deck, Hand, HandIndex, HandLen, Hands, gen_deck}};
+use models::{Card, holdem::{MAX_PLAYERS, CommunityCards, Deck, Facing, Hand, HandIndex, HandLen, Hands, gen_deck}};
 use platform_types::{Button, Dir, Input, Speaker, SFX, command, unscaled};
 use xs::{Xs, Seed};
 
@@ -279,36 +279,62 @@ pub fn update_and_render(
             
             let hands_len = $hands.len().u8();
 
-            let mut i = 0;
-            for hand in $hands.iter() {
-                let at = coords[i];
-                group.commands.draw_holdem_hand(
-                    hand,
-                    at.x,
-                    at.y,
-                );
+            {
+                let mut i = 0;
+                for hand in $hands.iter() {
+                    let at = coords[i];
+                    let facing = match group.ctx.hot {
+                        HoldemHand(index) if usize::from(index) == i => {
+                            // TODO check if is player controlled
+                            Facing::Up(hand)
+                        }
+                        _ => {
+                            Facing::Down
+                        }
+                    };
+                    group.commands.draw_holdem_hand(
+                        facing,
+                        at.x,
+                        at.y,
+                    );
 
+                    i += 1;
+                }
+            }
+
+            let mut i = 0;
+            for _ in $hands.iter() {
                 match group.ctx.hot {
                     HoldemHand(mut index) if usize::from(index) == i => {
-                        let corner_x = at.x + gfx::CHAR_W;
-                        let corner_y = at.y + gfx::card::HEIGHT + gfx::CHAR_H;
+                        const HAND_DESC_H: unscaled::H = unscaled::h_const_div(
+                            command::HEIGHT_H,
+                            4
+                        );
+
+                        const HAND_DESC_RECT: unscaled::Rect = unscaled::Rect {
+                            x: unscaled::X(0),
+                            y: unscaled::y_const_add_h(
+                                unscaled::Y(0),
+                                unscaled::h_const_sub(
+                                    command::HEIGHT_H,
+                                    HAND_DESC_H
+                                )
+                            ),
+                            w: command::WIDTH_W,
+                            h: HAND_DESC_H,
+                        };
 
                         stack_money_text!(money_text = state.table.moneys[i]);
 
                         group.commands.draw_nine_slice(
                             gfx::NineSlice::Button,
-                            unscaled::Rect {
-                                x: corner_x,
-                                y: corner_y,
-                                w: gfx::CHAR_W * (2 + pre_nul_len(&money_text)),
-                                h: gfx::CHAR_H * 3,
-                            }
+                            HAND_DESC_RECT
                         );
 
                         group.commands.print_chars(
                             &money_text,
-                            corner_x + gfx::CHAR_W,
-                            corner_y + gfx::CHAR_H,
+                            HAND_DESC_RECT.x + gfx::CHAR_W,
+                            HAND_DESC_RECT.y + gfx::CHAR_H,
                             6
                         );
 
@@ -332,13 +358,14 @@ pub fn update_and_render(
                             }
                         }
                     }
-                    Zero => {
-                        group.ctx.set_next_hot(HoldemHand(0));
-                    }
                     _ => {}
                 }
 
                 i += 1;
+            }
+
+            if let Zero = group.ctx.hot {
+                group.ctx.set_next_hot(HoldemHand(0));
             }
         }
     }
