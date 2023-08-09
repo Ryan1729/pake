@@ -1,22 +1,28 @@
 #![allow(unused_imports)]
 
 use gfx::{Commands, Highlighting::{Highlighted, Plain}};
-use models::{Card, holdem::{MAX_PLAYERS, CommunityCards, Deck, Facing, Hand, HandIndex, HandLen, Hands, gen_deck}};
+use models::{Card, Money, holdem::{MAX_PLAYERS, CommunityCards, Deck, Facing, Hand, HandIndex, HandLen, Hands, Pot, gen_deck, gen_hand_index}};
 use platform_types::{Button, Dir, Input, Speaker, SFX, command, unscaled};
 use xs::{Xs, Seed};
 
 use std::io::Write;
 
 #[derive(Clone)]
+pub struct HoldemStateBundle {
+    pub deck: Deck,
+    pub hands: Hands,
+    pub dealer: HandIndex,
+    pub pot: Pot,
+}
+
+#[derive(Clone)]
 pub enum HoldemState {
     Undealt { player_count: HandLen, starting_money: Money },
     PreFlop {
-        deck: Deck,
-        hands: Hands,
+        bundle: HoldemStateBundle,
     },
     PostFlop {
-        deck: Deck,
-        hands: Hands,
+        bundle: HoldemStateBundle,
         community_cards: CommunityCards,
     },
 }
@@ -29,8 +35,6 @@ impl Default for HoldemState {
         }
     }
 }
-
-type Money = u32;
 
 type Personality = Option<CpuPersonality>;
 
@@ -236,6 +240,9 @@ pub fn update_and_render(
         speaker.request_sfx(SFX::CardPlace);
     }
 
+    const COMMUNITY_BASE_X: unscaled::X = unscaled::X(150);
+    const COMMUNITY_BASE_Y: unscaled::Y = unscaled::Y(150);
+
     macro_rules! stack_money_text {
         ($text:ident = $money: expr) => {
             let mut money_text = [0 as u8; 20];
@@ -251,15 +258,19 @@ pub fn update_and_render(
     }
 
     macro_rules! do_holdem_hands {
-        ($group: ident $(,)? $hands: ident) => {
+        ($group: ident $(,)? $bundle: ident) => {
             let group = $group;
+            let hands = &$bundle.hands;
+            let dealer = $bundle.dealer;
+            let pot = &$bundle.pot;
+
             use platform_types::unscaled::xy;
             let mut coords: [unscaled::XY; models::holdem::MAX_PLAYERS as usize] = [
                 xy!(0 0) ; models::holdem::MAX_PLAYERS as usize
             ];
-            
+
             let hand_width = gfx::card::WIDTH.get() + (gfx::card::WIDTH.get() / 2) + 5;
-            
+
             {
                 let mut i = 0u8;
                 'outer: for y in 0..4 {
@@ -276,12 +287,12 @@ pub fn update_and_render(
                     }
                 }
             }
-            
-            let hands_len = $hands.len().u8();
+
+            let hands_len = hands.len().u8();
 
             {
                 let mut i = 0;
-                for hand in $hands.iter() {
+                for hand in hands.iter() {
                     let at = coords[i];
                     let facing = match group.ctx.hot {
                         HoldemHand(index) if usize::from(index) == i => {
@@ -303,7 +314,7 @@ pub fn update_and_render(
             }
 
             let mut i = 0;
-            for _ in $hands.iter() {
+            for _ in hands.iter() {
                 match group.ctx.hot {
                     HoldemHand(mut index) if usize::from(index) == i => {
                         const HAND_DESC_H: unscaled::H = unscaled::h_const_div(
@@ -331,12 +342,25 @@ pub fn update_and_render(
                             HAND_DESC_RECT
                         );
 
-                        group.commands.print_chars(
-                            &money_text,
-                            HAND_DESC_RECT.x + gfx::CHAR_W,
-                            HAND_DESC_RECT.y + gfx::CHAR_H,
-                            6
-                        );
+                        {
+                            let mut y = HAND_DESC_RECT.y + gfx::CHAR_H;
+                            group.commands.print_chars(
+                                &money_text,
+                                HAND_DESC_RECT.x + gfx::CHAR_W,
+                                y,
+                                6
+                            );
+                            y += gfx::CHAR_LINE_ADVANCE;
+
+                            if usize::from(dealer) == i {
+                                group.commands.print_chars(
+                                    b"dealer",
+                                    HAND_DESC_RECT.x + gfx::CHAR_W,
+                                    y,
+                                    6
+                                );
+                            }
+                        }
 
                         match input.dir_pressed_this_frame() {
                             Some(Dir::Left) => {
@@ -367,10 +391,21 @@ pub fn update_and_render(
             if let Zero = group.ctx.hot {
                 group.ctx.set_next_hot(HoldemHand(0));
             }
+
+            stack_money_text!(main_pot_text = pot.main);
+
+            group.commands.print_chars(
+                &main_pot_text,
+                COMMUNITY_BASE_X - pre_nul_len(&main_pot_text) * gfx::CHAR_W,
+                COMMUNITY_BASE_Y,
+                6
+            );
+
+            main_pot_text
         }
     }
     match &mut state.table.state {
-        Undealt { 
+        Undealt {
             ref mut player_count,
             ref mut starting_money,
         } => {
@@ -470,9 +505,58 @@ pub fn update_and_render(
                 }
 
                 let (hands, deck) = models::holdem::deal(&mut state.rng, *player_count);
+
+                let dealer = gen_hand_index(&mut state.rng, *player_count);
+
+                let large_blind_amount = 10;
+                let small_blind_amount = 5;
+                let mut blinds = 0;
+                {
+                    let mut index = usize::from(dealer);
+                    if *player_count == HandLen::Two {
+                        // When head-to-head, the dealer posts the small blind
+                        // and the other player posts the big blind, so don't
+                        // advance.
+                    } else {
+                        index += 1;
+                        if index >= hands.len().usize() {
+                            index = 0;
+                        }
+                    };
+
+                    let (new_total, subbed) =
+                        match state.table.moneys[index].checked_sub(small_blind_amount) {
+                            Some(difference) => (difference, small_blind_amount),
+                            None => (0, state.table.moneys[index]),
+                        };
+                    state.table.moneys[index] = new_total;
+                    blinds += subbed;
+
+                    index += 1;
+                    if index >= hands.len().usize() {
+                        index = 0;
+                    }
+
+                    let (new_total, subbed) =
+                        match state.table.moneys[index].checked_sub(large_blind_amount) {
+                            Some(difference) => (difference, large_blind_amount),
+                            None => (0, state.table.moneys[index]),
+                        };
+                    state.table.moneys[index] = new_total;
+                    blinds += subbed;
+                }
+
+                let pot = Pot {
+                    main: blinds,
+                };
+
                 state.table.state = PreFlop {
-                    hands,
-                    deck
+                    bundle: HoldemStateBundle {
+                        hands,
+                        deck,
+                        dealer,
+                        pot,
+                    },
                 };
             } else {
                 let menu = [PlayerCountSelect, StartingMoneySelect, Submit];
@@ -532,19 +616,20 @@ pub fn update_and_render(
                 }
             }
         },
-        PreFlop { hands, deck: _ } => {
+        PreFlop { bundle } => {
             let group = new_group!();
-            do_holdem_hands!(group, hands);
+            do_holdem_hands!(group, bundle);
         },
-        PostFlop { hands, deck: _, community_cards } => {
+        PostFlop { bundle, community_cards } => {
             let group = new_group!();
+
             group.commands.draw_holdem_community_cards(
                 *community_cards,
-                unscaled::X(150),
-                unscaled::Y(150),
+                COMMUNITY_BASE_X,
+                COMMUNITY_BASE_Y,
             );
 
-            do_holdem_hands!(group, hands);
+            do_holdem_hands!(group, bundle);
         },
     }
 }

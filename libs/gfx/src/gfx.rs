@@ -484,10 +484,20 @@ pub fn get_rank_char_from_rank(rank: Rank) -> u8 {
     }
 }
 
+
+
+
+pub const CHAR_SPACING: u8 = 2;
+pub const CHAR_SPACING_W: unscaled::W = unscaled::W(CHAR_SPACING as _);
+pub const CHAR_SPACING_H: unscaled::H = unscaled::H(CHAR_SPACING as _);
 pub const CHAR_SIZE: u8 = 8;
 pub const CHAR_ADVANCE: unscaled::W = unscaled::W(4);
 pub const CHAR_W: unscaled::W = unscaled::W(CHAR_SIZE as _);
 pub const CHAR_H: unscaled::H = unscaled::H(CHAR_SIZE as _);
+pub const CHAR_LINE_ADVANCE: unscaled::H = unscaled::H(
+    CHAR_SIZE as unscaled::Inner
+    + CHAR_SPACING as unscaled::Inner
+);
 
 pub const FONT_FLIP: u8 = 128;
 

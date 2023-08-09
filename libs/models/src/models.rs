@@ -32,6 +32,8 @@ pub const fn get_rank(card: Card) -> Rank {
     card % RANK_COUNT
 }
 
+pub type Money = u32;
+
 pub mod holdem {
     use super::*;
 
@@ -51,7 +53,11 @@ pub mod holdem {
 
     pub type HandIndex = u8;
 
-    #[derive(Copy, Clone, Debug, Default)]
+    pub fn gen_hand_index(rng: &mut Xs, player_count: HandLen) -> HandIndex {
+        xs::range(rng, 0..player_count.u8() as _) as HandIndex
+    }
+
+    #[derive(Copy, Clone, Debug, Default, Eq, Ord, PartialEq, PartialOrd)]
     pub enum HandLen {
         #[default]
         Two,
@@ -205,6 +211,12 @@ pub mod holdem {
         pub fn len(&self) -> HandLen {
             self.len
         }
+    }
+
+    #[derive(Clone, Debug, Default)]
+    pub struct Pot {
+        // We expect to need to have a more complicated structure for side pots etc.
+        pub main: Money,
     }
     
     pub fn deal(
