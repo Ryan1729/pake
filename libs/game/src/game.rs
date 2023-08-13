@@ -12,6 +12,7 @@ pub struct HoldemStateBundle {
     pub deck: Deck,
     pub hands: Hands,
     pub dealer: HandIndex,
+    pub current: HandIndex,
     pub pot: Pot,
 }
 
@@ -262,6 +263,7 @@ pub fn update_and_render(
             let group = $group;
             let hands = &$bundle.hands;
             let dealer = $bundle.dealer;
+            let current = $bundle.current;
             let pot = &$bundle.pot;
 
             use platform_types::unscaled::xy;
@@ -278,6 +280,7 @@ pub fn update_and_render(
                         coords[usize::from(i)] = xy!(
                             x * hand_width,
                             y * ((gfx::card::HEIGHT.get() / 2) + 1)
+                            + gfx::SPACING_H.get()
                         );
 
                         i += 1;
@@ -292,8 +295,20 @@ pub fn update_and_render(
 
             {
                 let mut i = 0;
+                for _ in hands.iter() {
+                    if usize::from(current) == i {
+                        let at = coords[i];
+                        group.commands.draw_holdem_hand_underlight(at.x, at.y);
+                    }
+                    i += 1;
+                }
+            }
+
+            {
+                let mut i = 0;
                 for hand in hands.iter() {
                     let at = coords[i];
+
                     let facing = match group.ctx.hot {
                         HoldemHand(index) if usize::from(index) == i => {
                             // TODO check if is player controlled
@@ -360,6 +375,16 @@ pub fn update_and_render(
                                     6
                                 );
                             }
+                            y += gfx::CHAR_LINE_ADVANCE;
+
+                            if usize::from(current) == i {
+                                group.commands.print_chars(
+                                    b"current",
+                                    HAND_DESC_RECT.x + gfx::CHAR_W,
+                                    y,
+                                    6
+                                );
+                            }
                         }
 
                         match input.dir_pressed_this_frame() {
@@ -400,8 +425,6 @@ pub fn update_and_render(
                 COMMUNITY_BASE_Y,
                 6
             );
-
-            main_pot_text
         }
     }
     match &mut state.table.state {
@@ -546,6 +569,18 @@ pub fn update_and_render(
                     blinds += subbed;
                 }
 
+                let current = if *player_count == HandLen::Two {
+                    // When head-to-head, the dealer acts first.
+                    dealer
+                } else {
+                    // Normally, the player after the dealer acts first.
+                    let mut index = dealer + 1;
+                    if index >= hands.len().u8() {
+                        index = 0;
+                    }
+                    index
+                };
+
                 let pot = Pot {
                     main: blinds,
                 };
@@ -555,6 +590,7 @@ pub fn update_and_render(
                         hands,
                         deck,
                         dealer,
+                        current,
                         pot,
                     },
                 };

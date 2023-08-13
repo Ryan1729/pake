@@ -90,6 +90,36 @@ impl Commands {
         }
     }
 
+    // TODO? Randomize these for visual interest? {
+    const HOLDEM_HAND_X_OFFSET: unscaled::W = unscaled::w_const_div(card::WIDTH, 2);
+    const HOLDEM_HAND_Y_OFFSET: unscaled::H = unscaled::H(0);
+    // }
+
+    pub fn draw_holdem_hand_underlight(
+        &mut self,
+        x: unscaled::X,
+        y: unscaled::Y
+    ) {
+        let (new_x, clipped_w) = match x.checked_sub(SPACING_W) {
+            Some(n_x) => (n_x, unscaled::W(0)),
+            None => (unscaled::X(0), unscaled::W(x.get())),
+        };
+        let (new_y, clipped_h) = match y.checked_sub(SPACING_H) {
+            Some(n_y) => (n_y, unscaled::H(0)),
+            None => (unscaled::Y(0), unscaled::H(y.get())),
+        };
+
+        self.draw_nine_slice(
+            NineSlice::Highlight,
+            unscaled::Rect {
+                x: new_x,
+                y: new_y,
+                w: (SPACING_W + Self::HOLDEM_HAND_X_OFFSET + card::WIDTH + SPACING_W) - clipped_w,
+                h: (SPACING_H + Self::HOLDEM_HAND_Y_OFFSET + card::HEIGHT + SPACING_H) - clipped_h,
+            },
+        );
+    }
+
     pub fn draw_holdem_hand(
         &mut self,
         facing: holdem::Facing,
@@ -99,11 +129,11 @@ impl Commands {
         match facing {
             holdem::Facing::Down => {
                 self.draw_card_back(x, y);
-                self.draw_card_back(x + card::WIDTH/2, y);
+                self.draw_card_back(x + Self::HOLDEM_HAND_X_OFFSET, y + Self::HOLDEM_HAND_Y_OFFSET);
             }
             holdem::Facing::Up(hand) => {
                 self.draw_card(hand[0], x, y);
-                self.draw_card(hand[1], x + card::WIDTH/2, y);
+                self.draw_card(hand[1], x + Self::HOLDEM_HAND_X_OFFSET, y + Self::HOLDEM_HAND_Y_OFFSET);
             },
         }
     }
@@ -245,6 +275,7 @@ pub enum NineSlice {
     Button,
     ButtonHot,
     ButtonPressed,
+    Highlight,
 }
 
 impl NineSlice {
@@ -267,6 +298,7 @@ impl NineSlice {
             NineSlice::Button => 1,
             NineSlice::ButtonHot => 2,
             NineSlice::ButtonPressed => 3,
+            NineSlice::Highlight => 4,
         }
     }
 }
@@ -498,6 +530,10 @@ pub const CHAR_LINE_ADVANCE: unscaled::H = unscaled::H(
     CHAR_SIZE as unscaled::Inner
     + CHAR_SPACING as unscaled::Inner
 );
+
+pub const SPACING: u8 = CHAR_SIZE;
+pub const SPACING_W: unscaled::W = unscaled::W(SPACING as _);
+pub const SPACING_H: unscaled::H = unscaled::H(SPACING as _);
 
 pub const FONT_FLIP: u8 = 128;
 

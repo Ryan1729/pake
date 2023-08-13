@@ -189,6 +189,10 @@ pub mod unscaled {
         pub const fn saturating_point_sub(self, x: X) -> W {
             W(self.0.saturating_sub(x.0))
         }
+
+        pub fn checked_sub(self, w: W) -> Option<X> {
+            self.0.checked_sub(w.0).map(X)
+        }
     }
 
     impl core::ops::AddAssign<H> for Y {
@@ -238,6 +242,10 @@ pub mod unscaled {
         }
         pub const fn saturating_point_sub(self, y: Y) -> H {
             H(self.0.saturating_sub(y.0))
+        }
+
+        pub fn checked_sub(self, h: H) -> Option<Y> {
+            self.0.checked_sub(h.0).map(Y)
         }
     }
 
