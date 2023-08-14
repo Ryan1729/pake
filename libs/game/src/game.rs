@@ -1,8 +1,8 @@
 #![allow(unused_imports)]
 
-use gfx::{Commands, Highlighting::{Highlighted, Plain}};
+use gfx::{SPACING_H, SPACING_W, Commands, Highlighting::{Highlighted, Plain}};
 use models::{Card, Money, holdem::{MAX_PLAYERS, CommunityCards, Deck, Facing, Hand, HandIndex, HandLen, Hands, Pot, gen_deck, gen_hand_index}};
-use platform_types::{Button, Dir, Input, Speaker, SFX, command, unscaled};
+use platform_types::{Button, Dir, Input, PaletteIndex, Speaker, SFX, command, unscaled};
 use xs::{Xs, Seed};
 
 use std::io::Write;
@@ -81,6 +81,8 @@ mod ui {
         pub speaker: &'speaker mut Speaker,
     }
 
+    pub type HoldemMenuSelection = u8;
+
     #[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
     pub enum Id {
         #[default]
@@ -88,7 +90,8 @@ mod ui {
         Submit,
         PlayerCountSelect,
         StartingMoneySelect,
-        HoldemHand(HandIndex)
+        HoldemHand(HandIndex),
+        HoldemMenu(HoldemMenuSelection),
     }
 
     #[derive(Copy, Clone, Default, Debug)]
@@ -258,6 +261,8 @@ pub fn update_and_render(
         }
     }
 
+    const TEXT: PaletteIndex = 6;
+
     macro_rules! do_holdem_hands {
         ($group: ident $(,)? $bundle: ident) => {
             let group = $group;
@@ -280,7 +285,7 @@ pub fn update_and_render(
                         coords[usize::from(i)] = xy!(
                             x * hand_width,
                             y * ((gfx::card::HEIGHT.get() / 2) + 1)
-                            + gfx::SPACING_H.get()
+                            + SPACING_H.get()
                         );
 
                         i += 1;
@@ -358,21 +363,22 @@ pub fn update_and_render(
                         );
 
                         {
+                            let x = HAND_DESC_RECT.x + SPACING_W;
                             let mut y = HAND_DESC_RECT.y + gfx::CHAR_H;
                             group.commands.print_chars(
                                 &money_text,
-                                HAND_DESC_RECT.x + gfx::CHAR_W,
+                                x,
                                 y,
-                                6
+                                TEXT
                             );
                             y += gfx::CHAR_LINE_ADVANCE;
 
                             if usize::from(dealer) == i {
                                 group.commands.print_chars(
                                     b"dealer",
-                                    HAND_DESC_RECT.x + gfx::CHAR_W,
+                                    x,
                                     y,
-                                    6
+                                    TEXT
                                 );
                             }
                             y += gfx::CHAR_LINE_ADVANCE;
@@ -380,9 +386,9 @@ pub fn update_and_render(
                             if usize::from(current) == i {
                                 group.commands.print_chars(
                                     b"current",
-                                    HAND_DESC_RECT.x + gfx::CHAR_W,
+                                    x,
                                     y,
-                                    6
+                                    TEXT
                                 );
                             }
                         }
@@ -425,6 +431,60 @@ pub fn update_and_render(
                 COMMUNITY_BASE_Y,
                 6
             );
+
+            match &state.table.personalities[usize::from(current)] {
+                Some(personality) => {
+                    group.commands.print_chars(
+                        b"TODO handle Some(personality)",
+                        COMMUNITY_BASE_X - pre_nul_len(&main_pot_text) * gfx::CHAR_W,
+                        COMMUNITY_BASE_Y,
+                        TEXT
+                    );
+                },
+                Nothing => {
+                    match group.ctx.hot {
+                        HoldemMenu(_selection) => {
+                            const MENU_H: unscaled::H = unscaled::h_const_div(
+                                command::HEIGHT_H,
+                                6
+                            );
+
+                            const MENU_RECT: unscaled::Rect = unscaled::Rect {
+                                x: unscaled::X(0),
+                                y: unscaled::y_const_add_h(
+                                    unscaled::Y(0),
+                                    unscaled::h_const_sub(
+                                        command::HEIGHT_H,
+                                        MENU_H
+                                    )
+                                ),
+                                w: command::WIDTH_W,
+                                h: MENU_H,
+                            };
+
+                            stack_money_text!(money_text = state.table.moneys[usize::from(current)]);
+
+                            group.commands.draw_nine_slice(
+                                gfx::NineSlice::Button,
+                                MENU_RECT
+                            );
+
+                            {
+                                let x = MENU_RECT.x + SPACING_W;
+                                let mut y = MENU_RECT.y + SPACING_H;
+                                group.commands.print_chars(
+                                    &money_text,
+                                    x,
+                                    y,
+                                    TEXT
+                                );
+                                y += gfx::CHAR_LINE_ADVANCE;
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            }
         }
     }
     match &mut state.table.state {
