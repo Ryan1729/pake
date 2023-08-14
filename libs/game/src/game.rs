@@ -1,7 +1,7 @@
 #![allow(unused_imports)]
 
 use gfx::{SPACING_H, SPACING_W, Commands, Highlighting::{Highlighted, Plain}};
-use models::{Card, Money, holdem::{MAX_PLAYERS, CommunityCards, Deck, Facing, Hand, HandIndex, HandLen, Hands, Pot, gen_deck, gen_hand_index}};
+use models::{Card, Money, holdem::{MAX_PLAYERS, CommunityCards, Deck, Facing, Hand, HandIndex, HandLen, Hands, Pot, gen_action, gen_deck, gen_hand_index}};
 use platform_types::{Button, Dir, Input, PaletteIndex, Speaker, SFX, command, unscaled};
 use xs::{Xs, Seed};
 
@@ -432,16 +432,15 @@ pub fn update_and_render(
                 6
             );
 
-            match &state.table.personalities[usize::from(current)] {
-                Some(personality) => {
-                    group.commands.print_chars(
-                        b"TODO handle Some(personality)",
-                        COMMUNITY_BASE_X - pre_nul_len(&main_pot_text) * gfx::CHAR_W,
-                        COMMUNITY_BASE_Y,
-                        TEXT
-                    );
+            let action_opt = match &state.table.personalities[usize::from(current)] {
+                Some(_personality) => {
+                    // TODO Base choice off of personality
+                    Some(gen_action(
+                        &mut state.rng,
+                        state.table.moneys[usize::from(current)] + 1
+                    ))
                 },
-                Nothing => {
+                None => {
                     match group.ctx.hot {
                         HoldemMenu(_selection) => {
                             const MENU_H: unscaled::H = unscaled::h_const_div(
@@ -480,10 +479,32 @@ pub fn update_and_render(
                                 );
                                 y += gfx::CHAR_LINE_ADVANCE;
                             }
+
+                            // TODO allow player to select any legal action
+
+                            None
                         }
-                        _ => {}
+                        _ => None
                     }
                 }
+            };
+
+            if let Some(action) = action_opt {
+                // TODO Confirm that all raises are legal.
+
+                $bundle.current += 1;
+                if $bundle.current >= hands.len().u8() {
+                    $bundle.current = 0;
+                }
+
+                let is_done = if hands.len() == HandLen::Two {
+                    // When head-to-head, the dealer acts first.
+                    $bundle.current != dealer
+                } else {
+                    $bundle.current == dealer
+                };
+
+                dbg!(is_done);
             }
         }
     }

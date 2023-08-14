@@ -39,6 +39,26 @@ pub mod holdem {
 
     pub type Hand = [Card; 2];
 
+    #[derive(Copy, Clone, Debug, Default)]
+    pub enum Action {
+        #[default]
+        Fold,
+        Call,
+        Raise(Money)
+    }
+
+    pub fn gen_action(rng: &mut Xs, one_past_max_money: Money) -> Action {
+        use Action::*;
+
+        match xs::range(rng, 0..3) {
+            0 => Fold,
+            1 => Call,
+            _ => Raise(
+                xs::range(rng, 1..core::cmp::max(2, one_past_max_money)) as Money
+            )
+        }
+    }
+
     #[derive(Copy, Clone, Default)]
     pub enum Facing {
         #[default]
