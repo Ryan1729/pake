@@ -102,11 +102,11 @@ impl Commands {
     ) {
         let (new_x, clipped_w) = match x.checked_sub(SPACING_W) {
             Some(n_x) => (n_x, unscaled::W(0)),
-            None => (unscaled::X(0), unscaled::W(x.get())),
+            None => (unscaled::X(0), unscaled::W(SPACING_W.get() - x.get())),
         };
         let (new_y, clipped_h) = match y.checked_sub(SPACING_H) {
             Some(n_y) => (n_y, unscaled::H(0)),
-            None => (unscaled::Y(0), unscaled::H(y.get())),
+            None => (unscaled::Y(0), unscaled::H(SPACING_H.get() - y.get())),
         };
 
         self.draw_nine_slice(
@@ -117,6 +117,34 @@ impl Commands {
                 w: (SPACING_W + Self::HOLDEM_HAND_X_OFFSET + card::WIDTH + SPACING_W) - clipped_w,
                 h: (SPACING_H + Self::HOLDEM_HAND_Y_OFFSET + card::HEIGHT + SPACING_H) - clipped_h,
             },
+        );
+    }
+
+    pub fn draw_holdem_hand_selected(
+        &mut self,
+        x: unscaled::X,
+        y: unscaled::Y
+    ) {
+        const SELECTED_BASE_X: unscaled::X = unscaled::X(133);
+        const SELECTED_Y: unscaled::Y = unscaled::Y(48);
+        const SELECTED_W: unscaled::W = unscaled::W(14);
+        const SELECTED_H: unscaled::H = unscaled::H(4);
+
+        const GRID_W: unscaled::W = unscaled::W(24);
+
+        let new_y = y.saturating_sub(SELECTED_H);
+
+        self.sspr(
+            sprite::XY {
+                x: sprite::X((SELECTED_BASE_X + GRID_W).get()),
+                y: sprite::Y(SELECTED_Y.get()),
+            },
+            Rect::from_unscaled(unscaled::Rect {
+                x: x + ((Self::HOLDEM_HAND_X_OFFSET + card::WIDTH) / 2) - SELECTED_W / 2,
+                y: new_y,
+                w: SELECTED_W,
+                h: SELECTED_H,
+            }),
         );
     }
 

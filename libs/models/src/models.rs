@@ -59,6 +59,25 @@ pub mod holdem {
         }
     }
 
+    #[derive(Copy, Clone, Debug, Default)]
+    pub enum ActionKind {
+        #[default]
+        Fold,
+        Call,
+        Raise,
+    }
+
+    impl ActionKind {
+        pub fn text(self) -> &'static [u8] {
+            use ActionKind::*;
+            match self {
+                Fold => b"fold",
+                Call => b"call",
+                Raise => b"raise",
+            }
+        }
+    }
+
     #[derive(Copy, Clone, Default)]
     pub enum Facing {
         #[default]

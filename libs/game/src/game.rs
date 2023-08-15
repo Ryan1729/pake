@@ -1,11 +1,17 @@
 #![allow(unused_imports)]
 
 use gfx::{SPACING_H, SPACING_W, Commands, Highlighting::{Highlighted, Plain}};
-use models::{Card, Money, holdem::{MAX_PLAYERS, CommunityCards, Deck, Facing, Hand, HandIndex, HandLen, Hands, Pot, gen_action, gen_deck, gen_hand_index}};
+use models::{Card, Money, holdem::{MAX_PLAYERS, Action, ActionKind, CommunityCards, Deck, Facing, Hand, HandIndex, HandLen, Hands, Pot, gen_action, gen_deck, gen_hand_index}};
 use platform_types::{Button, Dir, Input, PaletteIndex, Speaker, SFX, command, unscaled};
 use xs::{Xs, Seed};
 
 use std::io::Write;
+
+#[derive(Clone, Default)]
+pub struct HoldemMenuSelection {
+    pub action_kind: ActionKind,
+    pub bet: Money,
+}
 
 #[derive(Clone)]
 pub struct HoldemStateBundle {
@@ -14,6 +20,7 @@ pub struct HoldemStateBundle {
     pub dealer: HandIndex,
     pub current: HandIndex,
     pub pot: Pot,
+    pub selection: HoldemMenuSelection,
 }
 
 #[derive(Clone)]
@@ -81,7 +88,7 @@ mod ui {
         pub speaker: &'speaker mut Speaker,
     }
 
-    pub type HoldemMenuSelection = u8;
+    pub type HoldemMenuId = u8;
 
     #[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
     pub enum Id {
@@ -91,7 +98,7 @@ mod ui {
         PlayerCountSelect,
         StartingMoneySelect,
         HoldemHand(HandIndex),
-        HoldemMenu(HoldemMenuSelection),
+        HoldemMenu(HoldemMenuId),
     }
 
     #[derive(Copy, Clone, Default, Debug)]
@@ -301,10 +308,15 @@ pub fn update_and_render(
             {
                 let mut i = 0;
                 for _ in hands.iter() {
+                    let at = coords[i];
+
                     if usize::from(current) == i {
-                        let at = coords[i];
-                        group.commands.draw_holdem_hand_underlight(at.x, at.y);
+                        group.commands.draw_holdem_hand_underlight(
+                            at.x,
+                            at.y
+                        );
                     }
+
                     i += 1;
                 }
             }
@@ -314,14 +326,17 @@ pub fn update_and_render(
                 for hand in hands.iter() {
                     let at = coords[i];
 
-                    let facing = match group.ctx.hot {
-                        HoldemHand(index) if usize::from(index) == i => {
-                            // TODO check if is player controlled
-                            Facing::Up(hand)
-                        }
-                        _ => {
-                            Facing::Down
-                        }
+                    let show_if_player_owned = match group.ctx.hot {
+                        HoldemHand(index) => usize::from(index) == i,
+                        HoldemMenu(_) => true,
+                        _ => false,
+                    } && usize::from(current) == i;
+
+                    let facing = if show_if_player_owned 
+                    && state.table.personalities[usize::from(current)].is_none() {
+                        Facing::Up(hand)
+                    } else {
+                        Facing::Down
                     };
                     group.commands.draw_holdem_hand(
                         facing,
@@ -332,6 +347,8 @@ pub fn update_and_render(
                     i += 1;
                 }
             }
+
+            const ACTION_KIND: ui::HoldemMenuId = 0;
 
             let mut i = 0;
             for _ in hands.iter() {
@@ -393,24 +410,22 @@ pub fn update_and_render(
                             }
                         }
 
-                        match input.dir_pressed_this_frame() {
-                            Some(Dir::Left) => {
+                        if group.input.pressed_this_frame(Button::LEFT) {
                                 if index == 0 {
                                     index = hands_len;
                                 }
                                 index -= 1;
                                 group.ctx.set_next_hot(HoldemHand(index));
+                        } if group.input.pressed_this_frame(Button::RIGHT) {
+                            index += 1;
+                            if index >= hands_len {
+                                index = 0;
                             }
-                            Some(Dir::Right) => {
-                                index += 1;
-                                if index >= hands_len {
-                                    index = 0;
-                                }
-                                group.ctx.set_next_hot(HoldemHand(index));
-                            }
-                            _ => {
-                                group.ctx.set_next_hot(HoldemHand(index));
-                            }
+                            group.ctx.set_next_hot(HoldemHand(index));
+                        } if group.input.pressed_this_frame(Button::A) {
+                            group.ctx.set_next_hot(HoldemMenu(ACTION_KIND));
+                        } else {
+                            group.ctx.set_next_hot(HoldemHand(index));
                         }
                     }
                     _ => {}
@@ -418,6 +433,26 @@ pub fn update_and_render(
 
                 i += 1;
             }
+
+            {
+                let mut i = 0;
+                for _ in hands.iter() {
+                    let at = coords[i];
+
+                    match group.ctx.hot {
+                        HoldemHand(index) if usize::from(index) == i => {
+                            group.commands.draw_holdem_hand_selected(
+                                at.x,
+                                at.y
+                            );
+                        },
+                        _ => {},
+                    };
+
+                    i += 1;
+                }
+            }
+
 
             if let Zero = group.ctx.hot {
                 group.ctx.set_next_hot(HoldemHand(0));
@@ -442,7 +477,7 @@ pub fn update_and_render(
                 },
                 None => {
                     match group.ctx.hot {
-                        HoldemMenu(_selection) => {
+                        HoldemMenu(menu_id) => {
                             const MENU_H: unscaled::H = unscaled::h_const_div(
                                 command::HEIGHT_H,
                                 6
@@ -480,11 +515,51 @@ pub fn update_and_render(
                                 y += gfx::CHAR_LINE_ADVANCE;
                             }
 
-                            // TODO allow player to select any legal action
+                            {
+                                let mut x = MENU_RECT.x + SPACING_W * 10;
+                                let y = MENU_RECT.y + SPACING_H;
+
+                                let action_kind_rect = unscaled::Rect {
+                                    x,
+                                    y,
+                                    w: unscaled::W(50),
+                                    h: MENU_RECT.h - SPACING_H * 2,
+                                };
+                    
+                                let action_kind_text = $bundle.selection.action_kind.text();
+                    
+                                {
+                                    let xy = gfx::center_line_in_rect(
+                                        action_kind_text.len() as _,
+                                        action_kind_rect,
+                                    );
+                                    group.commands.print_chars(
+                                        action_kind_text,
+                                        xy.x,
+                                        xy.y,
+                                        6
+                                    );
+                                }
+                    
+                                ui::draw_quick_select(
+                                    group,
+                                    action_kind_rect,
+                                    HoldemMenu(ACTION_KIND),
+                                );
+                                // TODO allow player to select any legal action
+                            }
+
+                            if group.input.pressed_this_frame(Button::B) {
+                                group.ctx.set_next_hot(HoldemHand(current));
+                            } else {
+                                
+                            }
 
                             None
                         }
-                        _ => None
+                        _ => {
+                            None
+                        }
                     }
                 }
             };
@@ -673,6 +748,7 @@ pub fn update_and_render(
                         dealer,
                         current,
                         pot,
+                        selection: HoldemMenuSelection::default(),
                     },
                 };
             } else {
