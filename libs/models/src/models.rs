@@ -145,7 +145,7 @@ pub mod holdem {
                 Eightteen => Nineteen,
                 Nineteen => Twenty,
                 Twenty => TwentyOne,
-                TwentyOne 
+                TwentyOne
                 | TwentyTwo => TwentyTwo,
             }
         }
@@ -153,7 +153,7 @@ pub mod holdem {
         pub fn saturating_sub_1(self) -> Self {
             use HandLen::*;
             match self {
-                Two 
+                Two
                 | Three => Two,
                 Four => Three,
                 Five => Four,
@@ -254,10 +254,86 @@ pub mod holdem {
 
     #[derive(Clone, Debug, Default)]
     pub struct Pot {
-        // We expect to need to have a more complicated structure for side pots etc.
-        pub main: Money,
+        // TODO? Is there a way to get a firm upper bound for the number of actions
+        // per round? Maybe we could impose a (generous) raise limit then calculate
+        // an upper bound based on that?
+        // Assuming any heap allocations still make sense, since this will be append
+        // only and then dropped all at once, an arena could work here to reduce the
+        // number of allocations. Without any known speed concerns, or another use
+        // case for an arena, bringing in that dependency doesn't currently seem
+        // worth it.
+        pub actions: [Vec<Action>; MAX_PLAYERS as usize],
     }
-    
+
+    impl Pot {
+        pub fn with_capacity(capacity: usize) -> Self {
+            let mut output = Pot::default();
+
+            for vec in &mut output.actions {
+                *vec = Vec::with_capacity(capacity);
+            }
+
+            output
+        }
+
+        pub fn individual_pots(&self) -> impl Iterator<Item = Money> {
+            // A side pot exists if there is a higher amount than someone who is
+            // still in, has bet. (TODO? filter out in-progress bets?)
+
+            let mut amounts = self.amounts();
+
+            amounts.sort_by(|a, b| {
+                use std::cmp::Ordering::*;
+                match (a, b) {
+                    (None, None) => Equal,
+                    // Move Nones to the high index end.
+                    (None, Some(_)) => Greater,
+                    (Some(_), None) => Less,
+                    (Some(a), Some(b)) => {
+                        // Reversed for descending order
+                        b.cmp(a)
+                    }
+                }
+            });
+
+            // Note: Does not correspond to a player index!
+            let mut index = 0;
+            std::iter::from_fn(move || {
+                while index < MAX_PLAYERS {
+                    let mut len = 1;
+                    let mut iter = (&amounts[usize::from(index)..]).windows(2);
+
+                    while let Some([l, r]) = iter.next() {
+                        if l != r {
+                            break
+                        }
+                        len += 1;
+                    }
+                    if len == 1 {
+                        // Side pots with one player in them are "trivial" and not
+                        // desired to be returned
+                        index += 1;
+                        continue;
+                    }
+                    let amount = amounts[usize::from(index)];
+                    index += len;
+
+                    if amount == None {
+                        // We expect all Nones to be at the end.
+                        break
+                    }
+                    return amount
+                }
+                None
+            })
+        }
+
+        fn amounts(&self) -> [Option<Money>; MAX_PLAYERS as usize] {
+            // Maybe we want to store the amount bet instead of `Call`?
+            todo!();
+        }
+    }
+
     pub fn deal(
         rng: &mut Xs,
         player_count: HandLen,
@@ -278,11 +354,11 @@ pub mod holdem {
 
         (hands, deck)
         //deck.burn();
-        //let [Some(card1), Some(card2), Some(card3)] = 
-            //[deck.draw(), deck.draw(), deck.draw()] 
+        //let [Some(card1), Some(card2), Some(card3)] =
+            //[deck.draw(), deck.draw(), deck.draw()]
             //else {
                 //debug_assert!(false, "Ran out of cards with fresh deck!?");
-                //return Self::default() 
+                //return Self::default()
             //};
         //community_cards: CommunityCards::Flop([card1, card2, card3]),
     }

@@ -332,7 +332,7 @@ pub fn update_and_render(
                         _ => false,
                     } && usize::from(current) == i;
 
-                    let facing = if show_if_player_owned 
+                    let facing = if show_if_player_owned
                     && state.table.personalities[usize::from(current)].is_none() {
                         Facing::Up(hand)
                     } else {
@@ -458,14 +458,24 @@ pub fn update_and_render(
                 group.ctx.set_next_hot(HoldemHand(0));
             }
 
-            stack_money_text!(main_pot_text = pot.main);
+            {
+                let mut y = COMMUNITY_BASE_Y;
+                for amount in pot.individual_pots() {
+                    stack_money_text!(main_pot_text = amount);
 
-            group.commands.print_chars(
-                &main_pot_text,
-                COMMUNITY_BASE_X - pre_nul_len(&main_pot_text) * gfx::CHAR_W,
-                COMMUNITY_BASE_Y,
-                6
-            );
+                    group.commands.print_chars(
+                        &main_pot_text,
+                        COMMUNITY_BASE_X - pre_nul_len(&main_pot_text) * gfx::CHAR_W,
+                        y,
+                        6
+                    );
+
+                    y += gfx::CHAR_LINE_ADVANCE;
+                }
+
+                // TODO confirm this looks okay with the maximum number of amounts
+                // which would be some function of MAX_PLAYERS. Exactly MAX_PLAYERS?
+            }
 
             let action_opt = match &state.table.personalities[usize::from(current)] {
                 Some(_personality) => {
@@ -525,9 +535,9 @@ pub fn update_and_render(
                                     w: unscaled::W(50),
                                     h: MENU_RECT.h - SPACING_H * 2,
                                 };
-                    
+
                                 let action_kind_text = $bundle.selection.action_kind.text();
-                    
+
                                 {
                                     let xy = gfx::center_line_in_rect(
                                         action_kind_text.len() as _,
@@ -540,7 +550,7 @@ pub fn update_and_render(
                                         6
                                     );
                                 }
-                    
+
                                 ui::draw_quick_select(
                                     group,
                                     action_kind_rect,
@@ -552,7 +562,7 @@ pub fn update_and_render(
                             if group.input.pressed_this_frame(Button::B) {
                                 group.ctx.set_next_hot(HoldemHand(current));
                             } else {
-                                
+
                             }
 
                             None
@@ -687,6 +697,8 @@ pub fn update_and_render(
 
                 let dealer = gen_hand_index(&mut state.rng, *player_count);
 
+                let mut pot = Pot::with_capacity(16);
+
                 let large_blind_amount = 10;
                 let small_blind_amount = 5;
                 let mut blinds = 0;
@@ -709,7 +721,7 @@ pub fn update_and_render(
                             None => (0, state.table.moneys[index]),
                         };
                     state.table.moneys[index] = new_total;
-                    blinds += subbed;
+                    pot.actions[index].push(Action::Raise(subbed));
 
                     index += 1;
                     if index >= hands.len().usize() {
@@ -722,7 +734,7 @@ pub fn update_and_render(
                             None => (0, state.table.moneys[index]),
                         };
                     state.table.moneys[index] = new_total;
-                    blinds += subbed;
+                    pot.actions[index].push(Action::Raise(subbed));
                 }
 
                 let current = if *player_count == HandLen::Two {
@@ -735,10 +747,6 @@ pub fn update_and_render(
                         index = 0;
                     }
                     index
-                };
-
-                let pot = Pot {
-                    main: blinds,
                 };
 
                 state.table.state = PreFlop {
