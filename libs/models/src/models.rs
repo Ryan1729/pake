@@ -90,6 +90,8 @@ pub mod holdem {
     /// possible hands is 22.
     pub const MAX_PLAYERS: u8 = 22;
 
+    pub type PerPlayer<A> = [A; MAX_PLAYERS as usize];
+
     pub type HandIndex = u8;
 
     pub fn gen_hand_index(rng: &mut Xs, player_count: HandLen) -> HandIndex {
@@ -238,7 +240,7 @@ pub mod holdem {
 
     #[derive(Clone, Debug, Default)]
     pub struct Hands {
-        hands: [Hand; MAX_PLAYERS as usize],
+        hands: PerPlayer<Hand>,
         len: HandLen,
     }
 
@@ -252,6 +254,13 @@ pub mod holdem {
         }
     }
 
+    #[derive(Copy, Clone, Debug, Default)]
+    pub enum PotAction {
+        #[default]
+        Fold,
+        Bet(Money)
+    }
+
     #[derive(Clone, Debug, Default)]
     pub struct Pot {
         // TODO? Is there a way to get a firm upper bound for the number of actions
@@ -262,7 +271,7 @@ pub mod holdem {
         // number of allocations. Without any known speed concerns, or another use
         // case for an arena, bringing in that dependency doesn't currently seem
         // worth it.
-        pub actions: [Vec<Action>; MAX_PLAYERS as usize],
+        pub actions: PerPlayer<Vec<PotAction>>,
     }
 
     impl Pot {
@@ -276,63 +285,148 @@ pub mod holdem {
             output
         }
 
-        pub fn individual_pots(&self) -> impl Iterator<Item = Money> {
+        pub fn push_bet(&mut self, index: HandIndex, bet: PotAction) {
+            self.actions[usize::from(index)].push(bet);
+        }
+
+        pub fn individual_pots(
+            &self,
+            current_money: &PerPlayer<Money>
+        ) -> impl Iterator<Item = Money> {
             // A side pot exists if there is a higher amount than someone who is
             // still in, has bet. (TODO? filter out in-progress bets?)
 
             let mut amounts = self.amounts();
 
-            amounts.sort_by(|a, b| {
-                use std::cmp::Ordering::*;
-                match (a, b) {
-                    (None, None) => Equal,
-                    // Move Nones to the high index end.
-                    (None, Some(_)) => Greater,
-                    (Some(_), None) => Less,
-                    (Some(a), Some(b)) => {
-                        // Reversed for descending order
-                        b.cmp(a)
-                    }
-                }
-            });
+            let current_money = current_money.clone();
 
-            // Note: Does not correspond to a player index!
-            let mut index = 0;
             std::iter::from_fn(move || {
-                while index < MAX_PLAYERS {
-                    let mut len = 1;
-                    let mut iter = (&amounts[usize::from(index)..]).windows(2);
+                loop {
+                    if amounts == [0; MAX_PLAYERS as usize] {
+                        return None
+                    }
 
-                    while let Some([l, r]) = iter.next() {
-                        if l != r {
-                            break
+                    let mut min_all_in = Money::MAX;
+                    for i in 0..amounts.len() {
+                        // A player is all in if they have 0 money left, 
+                        // and actually bet something.
+                        if current_money[i] == 0 {
+                            if amounts[i] > 0 && amounts[i] < min_all_in {
+                                min_all_in = amounts[i];
+                            }
                         }
-                        len += 1;
                     }
-                    if len == 1 {
-                        // Side pots with one player in them are "trivial" and not
-                        // desired to be returned
-                        index += 1;
-                        continue;
-                    }
-                    let amount = amounts[usize::from(index)];
-                    index += len;
 
-                    if amount == None {
-                        // We expect all Nones to be at the end.
-                        break
+                    let mut contributor_count: Money = 0;
+                    let mut output: Money = 0;
+                    for i in 0..amounts.len() {
+                        if amounts[i] > 0 {
+                            contributor_count += 1;
+                            match amounts[i].checked_sub(min_all_in) {
+                                Some(new_amount) => {
+                                    output = output.saturating_add(min_all_in);
+                                    amounts[i] = new_amount;
+                                },
+                                None => {
+                                    output = output.saturating_add(amounts[i]);
+                                    amounts[i] = 0;
+                                }
+                            }
+                        }
                     }
-                    return amount
+                    // Side pots with one player in them are "trivial" and not
+                    // desired to be returned
+                    if contributor_count > 1 && output != 0 {
+                        return Some(output)
+                    }
                 }
-                None
             })
         }
 
-        fn amounts(&self) -> [Option<Money>; MAX_PLAYERS as usize] {
-            // Maybe we want to store the amount bet instead of `Call`?
-            todo!();
+        fn amounts(&self) -> PerPlayer<Money> {
+            let mut outputs: PerPlayer<Money> = [0; MAX_PLAYERS as usize];
+            for i in 0..MAX_PLAYERS as usize {
+                let output = &mut outputs[i];
+                for action in &self.actions[i] {
+                    match action {
+                        PotAction::Fold => break,
+                        PotAction::Bet(bet) => {
+                            *output = output.saturating_add(*bet);
+                        }
+                    }
+                }
+            }
+            outputs
         }
     }
+
+    #[cfg(test)]
+    mod individual_pots_works {
+        use super::*;
+        #[derive(Debug)]
+        struct Spec {
+            bet: Money,
+            is_all_in: bool,
+        }
+
+        fn bet(bet: Money) -> Spec {
+            Spec {
+                bet,
+                is_all_in: false,
+            }
+        }
+
+        fn all_in(bet: Money) -> Spec {
+            Spec {
+                bet,
+                is_all_in: true,
+            }
+        }
+
+        // Short for assert
+        macro_rules! a {
+            ($specs: expr, $expected: expr) => {
+                let specs = $specs;
+                let expected = $expected;
+
+                let mut pot = Pot::default();
+
+                let mut moneys = [0; MAX_PLAYERS as usize];
+
+                for (i, spec) in specs.iter().enumerate() {
+                    pot.push_bet(
+                        HandIndex::try_from(i).unwrap(),
+                        PotAction::Bet(spec.bet),
+                    );
+
+                    moneys[i] = if spec.is_all_in {
+                        0
+                    } else {
+                        1
+                    };
+                }
+
+                let actual: Vec<Money> = pot.individual_pots(&moneys).collect();
+
+                let expected: Vec<Money> = expected.into_iter().collect();
+
+                assert_eq!(actual, expected);
+            }
+        }
+
+        #[test]
+        fn on_these_examples() {
+            a!([bet(5), bet(10)], [15]);
+            a!([all_in(300), all_in(500)], [600]);
+            a!([all_in(300), all_in(500), all_in(800)], [900, 400]);
+            a!([all_in(800), all_in(500), all_in(300)], [900, 400]);
+            a!([all_in(500), all_in(300), all_in(800)], [900, 400]);
+            a!([all_in(300), all_in(500), bet(800)], [900, 400]);
+            a!([all_in(300), all_in(500), bet(800), bet(800)], [300 * 4, 200 * 3, 300 * 2]);
+            a!([all_in(300), all_in(500), bet(900), bet(900)], [300 * 4, 200 * 3, 400 * 2]);
+        }
+    }
+    
 
     pub fn deal(
         rng: &mut Xs,

@@ -1,7 +1,7 @@
 #![allow(unused_imports)]
 
 use gfx::{SPACING_H, SPACING_W, Commands, Highlighting::{Highlighted, Plain}};
-use models::{Card, Money, holdem::{MAX_PLAYERS, Action, ActionKind, CommunityCards, Deck, Facing, Hand, HandIndex, HandLen, Hands, Pot, gen_action, gen_deck, gen_hand_index}};
+use models::{Card, Money, holdem::{MAX_PLAYERS, Action, ActionKind, CommunityCards, Deck, Facing, Hand, HandIndex, HandLen, Hands, Pot, PotAction, gen_action, gen_deck, gen_hand_index}};
 use platform_types::{Button, Dir, Input, PaletteIndex, Speaker, SFX, command, unscaled};
 use xs::{Xs, Seed};
 
@@ -460,7 +460,7 @@ pub fn update_and_render(
 
             {
                 let mut y = COMMUNITY_BASE_Y;
-                for amount in pot.individual_pots() {
+                for amount in pot.individual_pots(&state.table.moneys) {
                     stack_money_text!(main_pot_text = amount);
 
                     group.commands.print_chars(
@@ -703,38 +703,38 @@ pub fn update_and_render(
                 let small_blind_amount = 5;
                 let mut blinds = 0;
                 {
-                    let mut index = usize::from(dealer);
+                    let mut index = dealer;
                     if *player_count == HandLen::Two {
                         // When head-to-head, the dealer posts the small blind
                         // and the other player posts the big blind, so don't
                         // advance.
                     } else {
                         index += 1;
-                        if index >= hands.len().usize() {
+                        if index >= hands.len().u8() {
                             index = 0;
                         }
                     };
 
                     let (new_total, subbed) =
-                        match state.table.moneys[index].checked_sub(small_blind_amount) {
+                        match state.table.moneys[usize::from(index)].checked_sub(small_blind_amount) {
                             Some(difference) => (difference, small_blind_amount),
-                            None => (0, state.table.moneys[index]),
+                            None => (0, state.table.moneys[usize::from(index)]),
                         };
-                    state.table.moneys[index] = new_total;
-                    pot.actions[index].push(Action::Raise(subbed));
+                    state.table.moneys[usize::from(index)] = new_total;
+                    pot.push_bet(index, PotAction::Bet(subbed));
 
                     index += 1;
-                    if index >= hands.len().usize() {
+                    if index >= hands.len().u8() {
                         index = 0;
                     }
 
                     let (new_total, subbed) =
-                        match state.table.moneys[index].checked_sub(large_blind_amount) {
+                        match state.table.moneys[usize::from(index)].checked_sub(large_blind_amount) {
                             Some(difference) => (difference, large_blind_amount),
-                            None => (0, state.table.moneys[index]),
+                            None => (0, state.table.moneys[usize::from(index)]),
                         };
-                    state.table.moneys[index] = new_total;
-                    pot.actions[index].push(Action::Raise(subbed));
+                    state.table.moneys[usize::from(index)] = new_total;
+                    pot.push_bet(index, PotAction::Bet(subbed));
                 }
 
                 let current = if *player_count == HandLen::Two {
