@@ -581,15 +581,11 @@ pub fn update_and_render(
                 if $bundle.current >= hands.len().u8() {
                     $bundle.current = 0;
                 }
-
-                let is_done = if hands.len() == HandLen::Two {
-                    // When head-to-head, the dealer acts first.
-                    $bundle.current != dealer
-                } else {
-                    $bundle.current == dealer
-                };
+                
+                let is_done = pot.is_round_complete(&state.table.moneys);
 
                 dbg!(is_done);
+                // TODO advance to next stage if done
             }
         }
     }
@@ -701,7 +697,6 @@ pub fn update_and_render(
 
                 let large_blind_amount = 10;
                 let small_blind_amount = 5;
-                let mut blinds = 0;
                 {
                     let mut index = dealer;
                     if *player_count == HandLen::Two {

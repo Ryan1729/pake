@@ -289,6 +289,30 @@ pub mod holdem {
             self.actions[usize::from(index)].push(bet);
         }
 
+        pub fn is_round_complete(&self, current_money: &PerPlayer<Money>) -> bool {
+            // TODO correct this to be checking if the pot
+            // has everyone either all in, or with matching bets
+
+            let amounts = self.amounts();
+            let mut previous_amount = None;
+            for i in 0..amounts.len() {
+                // A player is all in or not playing, if they have 0 money left.
+                if current_money[i] == 0 {
+                    continue;
+                }
+
+                if let Some(previous) = previous_amount {
+                    if previous != amounts[i] {
+                        return false;
+                    }
+                } else {
+                    previous_amount = Some(amounts[i]);
+                }
+            }
+
+            true
+        }
+
         pub fn individual_pots(
             &self,
             current_money: &PerPlayer<Money>
