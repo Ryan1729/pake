@@ -269,6 +269,7 @@ pub fn update_and_render(
     }
 
     const TEXT: PaletteIndex = 6;
+    let min_money_unit = 5;
 
     macro_rules! do_holdem_hands {
         ($group: ident $(,)? $bundle: ident) => {
@@ -349,6 +350,8 @@ pub fn update_and_render(
             }
 
             const ACTION_KIND: ui::HoldemMenuId = 0;
+            const MONEY_AMOUNT: ui::HoldemMenuId = 1;
+            const MENU_KIND_ONE_PAST_MAX: ui::HoldemMenuId = 2;
 
             let mut i = 0;
             for _ in hands.iter() {
@@ -411,11 +414,11 @@ pub fn update_and_render(
                         }
 
                         if group.input.pressed_this_frame(Button::LEFT) {
-                                if index == 0 {
-                                    index = hands_len;
-                                }
-                                index -= 1;
-                                group.ctx.set_next_hot(HoldemHand(index));
+                            if index == 0 {
+                                index = hands_len;
+                            }
+                            index -= 1;
+                            group.ctx.set_next_hot(HoldemHand(index));
                         } if group.input.pressed_this_frame(Button::RIGHT) {
                             index += 1;
                             if index >= hands_len {
@@ -477,6 +480,7 @@ pub fn update_and_render(
                 // which would be some function of MAX_PLAYERS. Exactly MAX_PLAYERS?
             }
 
+            // TODO disallow folding against a bet of 0 more.
             let action_opt = match &state.table.personalities[usize::from(current)] {
                 Some(_personality) => {
                     // TODO Base choice off of personality
@@ -556,13 +560,78 @@ pub fn update_and_render(
                                     action_kind_rect,
                                     HoldemMenu(ACTION_KIND),
                                 );
-                                // TODO allow player to select any legal action
+
+                                match $bundle.selection.action_kind {
+                                    ActionKind::Raise => {
+                                        let raise_rect = unscaled::Rect {
+                                            x: action_kind_rect.x + action_kind_rect.w,
+                                            ..action_kind_rect
+                                        };
+
+                                        stack_money_text!(raise_text = $bundle.selection.bet);
+
+                                        {
+                                            let xy = gfx::center_line_in_rect(
+                                                pre_nul_len(&raise_text),
+                                                raise_rect,
+                                            );
+                                            group.commands.print_chars(
+                                                &raise_text,
+                                                xy.x,
+                                                xy.y,
+                                                6
+                                            );
+                                        }
+
+                                        ui::draw_quick_select(
+                                            group,
+                                            raise_rect,
+                                            HoldemMenu(MONEY_AMOUNT),
+                                        );
+
+
+                                    }
+                                    ActionKind::Call => {
+                                        // TODO show amount
+                                    }
+                                    ActionKind::Fold => {}
+                                }
+
+                                // TODO submit button
                             }
 
                             if group.input.pressed_this_frame(Button::B) {
                                 group.ctx.set_next_hot(HoldemHand(current));
+                            } else if group.input.pressed_this_frame(Button::LEFT) {
+                                let new_id = match menu_id.checked_sub(1) {
+                                    Some(new_id) => new_id,
+                                    None => MENU_KIND_ONE_PAST_MAX - 1,
+                                };
+                                group.ctx.set_next_hot(HoldemMenu(new_id));
+                            } else if group.input.pressed_this_frame(Button::RIGHT) {
+                                let mut new_id = menu_id + 1;
+                                if new_id >= MENU_KIND_ONE_PAST_MAX {
+                                    new_id = 0;
+                                }
+                                group.ctx.set_next_hot(HoldemMenu(new_id));
                             } else {
-
+                                match menu_id {
+                                    ACTION_KIND => {
+                                        if group.input.pressed_this_frame(Button::UP) {
+                                            $bundle.selection.action_kind = $bundle.selection.action_kind.next_up();
+                                        } else if group.input.pressed_this_frame(Button::DOWN) {
+                                            $bundle.selection.action_kind = $bundle.selection.action_kind.next_down();
+                                        }
+                                    }
+                                    MONEY_AMOUNT => {
+                                        if group.input.pressed_this_frame(Button::UP) {
+                                            $bundle.selection.bet = $bundle.selection.bet.saturating_add(min_money_unit);
+                                        } else if group.input.pressed_this_frame(Button::DOWN) {
+                                            $bundle.selection.bet = $bundle.selection.bet.saturating_sub(min_money_unit);
+                                        }
+                                    }
+                                    _ => {}
+                                }
                             }
 
                             None
@@ -581,7 +650,7 @@ pub fn update_and_render(
                 if $bundle.current >= hands.len().u8() {
                     $bundle.current = 0;
                 }
-                
+
                 let is_done = pot.is_round_complete(&state.table.moneys);
 
                 dbg!(is_done);
@@ -589,6 +658,7 @@ pub fn update_and_render(
             }
         }
     }
+
     match &mut state.table.state {
         Undealt {
             ref mut player_count,
@@ -762,12 +832,12 @@ pub fn update_and_render(
                         let menu_i = 1;
                         match input.dir_pressed_this_frame() {
                             Some(Dir::Up) => {
-                                *starting_money = starting_money.saturating_add(5);
+                                *starting_money = starting_money.saturating_add(min_money_unit);
                             },
                             Some(Dir::Down) => {
-                                *starting_money = starting_money.saturating_sub(5);
+                                *starting_money = starting_money.saturating_sub(min_money_unit);
                                 if *starting_money == 0 {
-                                    *starting_money = 5;
+                                    *starting_money = min_money_unit;
                                 }
                             },
                             Some(Dir::Left) => {

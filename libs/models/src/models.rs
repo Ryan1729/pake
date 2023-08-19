@@ -76,6 +76,24 @@ pub mod holdem {
                 Raise => b"raise",
             }
         }
+
+        pub fn next_up(self) -> Self {
+            use ActionKind::*;
+            match self {
+                Fold => Call,
+                Call => Raise,
+                Raise => Fold,
+            }
+        }
+
+        pub fn next_down(self) -> Self {
+            use ActionKind::*;
+            match self {
+                Fold => Raise,
+                Call => Fold,
+                Raise => Call,
+            }
+        }
     }
 
     #[derive(Copy, Clone, Default)]
