@@ -59,7 +59,7 @@ pub mod holdem {
         }
     }
 
-    #[derive(Copy, Clone, Debug, Default)]
+    #[derive(Copy, Clone, Debug, Default, Eq, PartialEq)]
     pub enum ActionKind {
         #[default]
         Fold,

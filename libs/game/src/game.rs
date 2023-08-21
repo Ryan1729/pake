@@ -351,7 +351,8 @@ pub fn update_and_render(
 
             const ACTION_KIND: ui::HoldemMenuId = 0;
             const MONEY_AMOUNT: ui::HoldemMenuId = 1;
-            const MENU_KIND_ONE_PAST_MAX: ui::HoldemMenuId = 2;
+            const SUBMIT: ui::HoldemMenuId = 2;
+            const MENU_KIND_ONE_PAST_MAX: ui::HoldemMenuId = 3;
 
             let mut i = 0;
             for _ in hands.iter() {
@@ -529,7 +530,7 @@ pub fn update_and_render(
                                 y += gfx::CHAR_LINE_ADVANCE;
                             }
 
-                            {
+                            let player_action_opt = {
                                 let mut x = MENU_RECT.x + SPACING_W * 10;
                                 let y = MENU_RECT.y + SPACING_H;
 
@@ -588,8 +589,6 @@ pub fn update_and_render(
                                             raise_rect,
                                             HoldemMenu(MONEY_AMOUNT),
                                         );
-
-
                                     }
                                     ActionKind::Call => {
                                         // TODO show amount
@@ -597,22 +596,60 @@ pub fn update_and_render(
                                     ActionKind::Fold => {}
                                 }
 
-                                // TODO submit button
-                            }
+                                if do_button(
+                                    group,
+                                    ButtonSpec {
+                                        id: HoldemMenu(SUBMIT),
+                                        rect: unscaled::Rect {
+                                            x: action_kind_rect.x + action_kind_rect.w + action_kind_rect.w,
+                                            ..action_kind_rect
+                                        },
+                                        text: b"submit",
+                                    }
+                                ) {
+                                    Some(match $bundle.selection.action_kind {
+                                        ActionKind::Fold => Action::Fold,
+                                        ActionKind::Call => Action::Call,
+                                        ActionKind::Raise => Action::Raise($bundle.selection.bet),
+                                    })
+                                } else {
+                                    None
+                                }
+                            };
 
                             if group.input.pressed_this_frame(Button::B) {
                                 group.ctx.set_next_hot(HoldemHand(current));
                             } else if group.input.pressed_this_frame(Button::LEFT) {
-                                let new_id = match menu_id.checked_sub(1) {
+                                let mut new_id = menu_id;
+                                new_id = match new_id.checked_sub(1) {
                                     Some(new_id) => new_id,
                                     None => MENU_KIND_ONE_PAST_MAX - 1,
                                 };
+
+                                if new_id == MONEY_AMOUNT
+                                && $bundle.selection.action_kind != ActionKind::Raise {
+                                    new_id = match new_id.checked_sub(1) {
+                                        Some(new_id) => new_id,
+                                        None => MENU_KIND_ONE_PAST_MAX - 1,
+                                    };
+                                }
+
                                 group.ctx.set_next_hot(HoldemMenu(new_id));
                             } else if group.input.pressed_this_frame(Button::RIGHT) {
-                                let mut new_id = menu_id + 1;
+                                let mut new_id = menu_id;
+                                new_id += 1;
                                 if new_id >= MENU_KIND_ONE_PAST_MAX {
                                     new_id = 0;
                                 }
+
+                                if new_id == MONEY_AMOUNT
+                                && $bundle.selection.action_kind != ActionKind::Raise {
+                                    new_id += 1;
+                                    if new_id >= MENU_KIND_ONE_PAST_MAX {
+                                        new_id = 0;
+                                    }
+                                }
+
                                 group.ctx.set_next_hot(HoldemMenu(new_id));
                             } else {
                                 match menu_id {
@@ -634,7 +671,7 @@ pub fn update_and_render(
                                 }
                             }
 
-                            None
+                            player_action_opt
                         }
                         _ => {
                             None
@@ -644,6 +681,7 @@ pub fn update_and_render(
             };
 
             if let Some(action) = action_opt {
+                // TODO track bets by calling `pot.push_bet`
                 // TODO Confirm that all raises are legal.
 
                 $bundle.current += 1;
