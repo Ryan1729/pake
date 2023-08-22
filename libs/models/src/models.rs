@@ -111,6 +111,7 @@ pub mod holdem {
     pub type PerPlayer<A> = [A; MAX_PLAYERS as usize];
 
     pub type HandIndex = u8;
+    pub const MAX_HAND_INDEX: u8 = MAX_PLAYERS - 1;
 
     pub fn gen_hand_index(rng: &mut Xs, player_count: HandLen) -> HandIndex {
         xs::range(rng, 0..player_count.u8() as _) as HandIndex
@@ -331,6 +332,19 @@ pub mod holdem {
             true
         }
 
+        /// The `caller_index` is the index of the player that is calling some 
+        /// previous bet.
+        pub fn call_amount(
+            &self,
+            caller_index: HandIndex
+        ) -> Money {
+            self.amounts()
+                .iter()
+                .max()
+                .copied()
+                .unwrap_or_default()
+        }
+
         pub fn individual_pots(
             &self,
             current_money: &PerPlayer<Money>
@@ -399,6 +413,74 @@ pub mod holdem {
                 }
             }
             outputs
+        }
+    }
+
+    #[cfg(test)]
+    mod call_amount_works {
+        use super::*;
+        #[derive(Debug)]
+        struct Spec {
+            bet: Money,
+            is_all_in: bool,
+        }
+
+        fn bet(bet: Money) -> Spec {
+            Spec {
+                bet,
+                is_all_in: false,
+            }
+        }
+
+        fn all_in(bet: Money) -> Spec {
+            Spec {
+                bet,
+                is_all_in: true,
+            }
+        }
+
+        // Short for assert
+        macro_rules! a {
+            ($specs: expr, $expected: expr) => {
+                let specs = $specs;
+                let expected = $expected;
+
+                let mut pot = Pot::default();
+
+                let mut moneys = [0; MAX_PLAYERS as usize];
+
+                let mut index = 0;
+                for (i, spec) in specs.iter().enumerate() {
+                    pot.push_bet(
+                        HandIndex::try_from(i).unwrap(),
+                        PotAction::Bet(spec.bet),
+                    );
+
+                    moneys[i] = if spec.is_all_in {
+                        0
+                    } else {
+                        1
+                    };
+
+                    index += 1;
+                }
+
+                let actual: Money = pot.call_amount(index);
+
+                assert_eq!(actual, expected);
+            }
+        }
+
+        #[test]
+        fn on_these_examples() {
+            a!([bet(5), bet(10)], 10);
+            a!([all_in(300), all_in(500)], 500);
+            a!([all_in(300), all_in(500), all_in(800)], 800);
+            a!([all_in(800), all_in(500), all_in(300)], 800);
+            a!([all_in(500), all_in(300), all_in(800)], 800);
+            a!([all_in(300), all_in(500), bet(800)], 800);
+            a!([all_in(300), all_in(500), bet(800), bet(800)], 800);
+            a!([all_in(300), all_in(500), bet(900), bet(900)], 900);
         }
     }
 

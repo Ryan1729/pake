@@ -268,6 +268,25 @@ pub fn update_and_render(
         }
     }
 
+    macro_rules! draw_money_in_rect {
+        ($group:ident, $money: expr, $rect: expr) => {
+            stack_money_text!(text = $money);
+
+            {
+                let xy = gfx::center_line_in_rect(
+                    pre_nul_len(&text),
+                    $rect,
+                );
+                $group.commands.print_chars(
+                    &text,
+                    xy.x,
+                    xy.y,
+                    6
+                );
+            }
+        }
+    }
+
     const TEXT: PaletteIndex = 6;
     let min_money_unit = 5;
 
@@ -277,7 +296,7 @@ pub fn update_and_render(
             let hands = &$bundle.hands;
             let dealer = $bundle.dealer;
             let current = $bundle.current;
-            let pot = &$bundle.pot;
+            let pot = &mut $bundle.pot;
 
             use platform_types::unscaled::xy;
             let mut coords: [unscaled::XY; models::holdem::MAX_PLAYERS as usize] = [
@@ -481,6 +500,13 @@ pub fn update_and_render(
                 // which would be some function of MAX_PLAYERS. Exactly MAX_PLAYERS?
             }
 
+            let call_amount = pot.call_amount(current);
+            let minimum_raise_total = call_amount + min_money_unit;
+
+            if $bundle.selection.bet < minimum_raise_total {
+                $bundle.selection.bet = minimum_raise_total;
+            }
+
             // TODO disallow folding against a bet of 0 more.
             let action_opt = match &state.table.personalities[usize::from(current)] {
                 Some(_personality) => {
@@ -562,35 +588,24 @@ pub fn update_and_render(
                                     HoldemMenu(ACTION_KIND),
                                 );
 
+                                let money_rect = unscaled::Rect {
+                                    x: action_kind_rect.x + action_kind_rect.w,
+                                    ..action_kind_rect
+                                };
+
                                 match $bundle.selection.action_kind {
                                     ActionKind::Raise => {
-                                        let raise_rect = unscaled::Rect {
-                                            x: action_kind_rect.x + action_kind_rect.w,
-                                            ..action_kind_rect
-                                        };
-
-                                        stack_money_text!(raise_text = $bundle.selection.bet);
-
-                                        {
-                                            let xy = gfx::center_line_in_rect(
-                                                pre_nul_len(&raise_text),
-                                                raise_rect,
-                                            );
-                                            group.commands.print_chars(
-                                                &raise_text,
-                                                xy.x,
-                                                xy.y,
-                                                6
-                                            );
-                                        }
+                                        draw_money_in_rect!(group, $bundle.selection.bet, money_rect);
 
                                         ui::draw_quick_select(
                                             group,
-                                            raise_rect,
+                                            money_rect,
                                             HoldemMenu(MONEY_AMOUNT),
                                         );
                                     }
                                     ActionKind::Call => {
+                                        draw_money_in_rect!(group, call_amount, money_rect);
+
                                         // TODO show amount
                                     }
                                     ActionKind::Fold => {}
@@ -681,8 +696,53 @@ pub fn update_and_render(
             };
 
             if let Some(action) = action_opt {
-                // TODO track bets by calling `pot.push_bet`
-                // TODO Confirm that all raises are legal.
+                let bet = match action {
+                    Action::Fold => PotAction::Fold,
+                    Action::Call => {
+                        match
+                            state.table.moneys[usize::from($bundle.current)]
+                            .checked_sub(call_amount)
+                        {
+                            Some(new_amount) => {
+                                state.table.moneys[usize::from($bundle.current)] = new_amount;
+                                PotAction::Bet(call_amount)
+                            },
+                            None => {
+                                debug_assert!(
+                                    false,
+                                    "player {} called {} with only {}",
+                                    $bundle.current,
+                                    call_amount,
+                                    state.table.moneys[usize::from($bundle.current)],
+                                );
+                                PotAction::Bet(call_amount)
+                            }
+                        }
+                    },
+                    Action::Raise(raise_amount) => {
+                        match
+                            state.table.moneys[usize::from($bundle.current)]
+                            .checked_sub(raise_amount)
+                        {
+                            Some(new_amount) => {
+                                state.table.moneys[usize::from($bundle.current)] = new_amount;
+                                PotAction::Bet(raise_amount)
+                            },
+                            None => {
+                                debug_assert!(
+                                    false,
+                                    "player {} raised {} with only {}",
+                                    $bundle.current,
+                                    raise_amount,
+                                    state.table.moneys[usize::from($bundle.current)],
+                                );
+                                PotAction::Bet(raise_amount)
+                            }
+                        }
+                    },
+                };
+
+                pot.push_bet($bundle.current, bet);
 
                 $bundle.current += 1;
                 if $bundle.current >= hands.len().u8() {
@@ -754,19 +814,7 @@ pub fn update_and_render(
                 h: unscaled::H(100),
             };
 
-            stack_money_text!(starting_money_text = starting_money);
-
-            let xy = gfx::center_line_in_rect(
-                pre_nul_len(&starting_money_text),
-                starting_money_rect,
-            );
-
-            group.commands.print_chars(
-                &starting_money_text,
-                xy.x,
-                xy.y,
-                6
-            );
+            draw_money_in_rect!(group, starting_money, starting_money_rect);
 
             ui::draw_quick_select(
                 group,
