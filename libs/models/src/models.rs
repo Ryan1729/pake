@@ -1,4 +1,5 @@
 use xs::Xs;
+use core::num::NonZeroU32;
 
 pub const RANK_COUNT: u8 = 13;
 pub const SUIT_COUNT: u8 = 4;
@@ -33,6 +34,7 @@ pub const fn get_rank(card: Card) -> Rank {
 }
 
 pub type Money = u32;
+pub type NonZeroMoney = NonZeroU32;
 
 pub mod holdem {
     use super::*;
@@ -47,15 +49,38 @@ pub mod holdem {
         Raise(Money)
     }
 
-    pub fn gen_action(rng: &mut Xs, one_past_max_money: Money) -> Action {
+    #[derive(Debug)]
+    pub struct ActionSpec {
+        pub one_past_max_money: NonZeroMoney,
+        pub min_money_unit: NonZeroMoney,
+        pub call_amount: Money,
+    }
+
+    pub fn gen_action(
+        rng: &mut Xs,
+        ActionSpec { one_past_max_money, min_money_unit, call_amount }: ActionSpec
+    ) -> Action {
         use Action::*;
 
         match xs::range(rng, 0..3) {
             0 => Fold,
             1 => Call,
-            _ => Raise(
-                xs::range(rng, 1..core::cmp::max(2, one_past_max_money)) as Money
-            )
+            _ => {
+                // TODO? Maybe just take max_money as a param?
+                let max_money = one_past_max_money.get() - 1;
+
+                if call_amount > max_money {
+                    // Go all in
+                    Call
+                } else {
+                    let max_in_units = max_money/min_money_unit.get();
+                    let call_in_units = call_amount/min_money_unit.get();
+                    let output_in_units = xs::range(rng, call_in_units..core::cmp::max(call_in_units, max_in_units).saturating_add(1)) as Money;
+                    let output_in_money = output_in_units.saturating_mul(min_money_unit.get());
+
+                    Raise(output_in_money)
+                }
+            }
         }
     }
 
@@ -399,6 +424,11 @@ pub mod holdem {
             })
         }
 
+        pub fn amount_for(&self, index: HandIndex) -> Money {
+            // TODO? Avoid calculating the other players' amounts here?
+            self.amounts()[usize::from(index)]
+        }
+
         fn amounts(&self) -> PerPlayer<Money> {
             let mut outputs: PerPlayer<Money> = [0; MAX_PLAYERS as usize];
             for i in 0..MAX_PLAYERS as usize {
@@ -489,21 +519,28 @@ pub mod holdem {
         use super::*;
         #[derive(Debug)]
         struct Spec {
-            bet: Money,
+            action: PotAction,
             is_all_in: bool,
         }
 
         fn bet(bet: Money) -> Spec {
             Spec {
-                bet,
+                action: PotAction::Bet(bet),
                 is_all_in: false,
             }
         }
 
         fn all_in(bet: Money) -> Spec {
             Spec {
-                bet,
+                action: PotAction::Bet(bet),
                 is_all_in: true,
+            }
+        }
+
+        fn fold() -> Spec {
+            Spec {
+                action: PotAction::Fold,
+                is_all_in: false,
             }
         }
 
@@ -520,7 +557,7 @@ pub mod holdem {
                 for (i, spec) in specs.iter().enumerate() {
                     pot.push_bet(
                         HandIndex::try_from(i).unwrap(),
-                        PotAction::Bet(spec.bet),
+                        spec.action,
                     );
 
                     moneys[i] = if spec.is_all_in {
@@ -548,6 +585,8 @@ pub mod holdem {
             a!([all_in(300), all_in(500), bet(800)], [900, 400]);
             a!([all_in(300), all_in(500), bet(800), bet(800)], [300 * 4, 200 * 3, 300 * 2]);
             a!([all_in(300), all_in(500), bet(900), bet(900)], [300 * 4, 200 * 3, 400 * 2]);
+            a!([bet(5), bet(10), fold()], [15]);
+            a!([all_in(300), fold(), all_in(500), fold(), bet(800)], [900, 400]);
         }
     }
     

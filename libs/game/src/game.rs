@@ -1,7 +1,7 @@
 #![allow(unused_imports)]
 
 use gfx::{SPACING_H, SPACING_W, Commands, Highlighting::{Highlighted, Plain}};
-use models::{Card, Money, holdem::{MAX_PLAYERS, Action, ActionKind, CommunityCards, Deck, Facing, Hand, HandIndex, HandLen, Hands, Pot, PotAction, gen_action, gen_deck, gen_hand_index}};
+use models::{Card, Money, NonZeroMoney, holdem::{MAX_PLAYERS, Action, ActionKind, ActionSpec, CommunityCards, Deck, Facing, Hand, HandIndex, HandLen, Hands, Pot, PotAction, gen_action, gen_deck, gen_hand_index}};
 use platform_types::{Button, Dir, Input, PaletteIndex, Speaker, SFX, command, unscaled};
 use xs::{Xs, Seed};
 
@@ -288,7 +288,7 @@ pub fn update_and_render(
     }
 
     const TEXT: PaletteIndex = 6;
-    let min_money_unit = 5;
+    let min_money_unit: NonZeroMoney = NonZeroMoney::MIN.saturating_add(5 - 1);
 
     macro_rules! do_holdem_hands {
         ($group: ident $(,)? $bundle: ident) => {
@@ -296,6 +296,7 @@ pub fn update_and_render(
             let hands = &$bundle.hands;
             let dealer = $bundle.dealer;
             let current = $bundle.current;
+            let current_i = usize::from(current);
             let pot = &mut $bundle.pot;
 
             use platform_types::unscaled::xy;
@@ -330,7 +331,7 @@ pub fn update_and_render(
                 for _ in hands.iter() {
                     let at = coords[i];
 
-                    if usize::from(current) == i {
+                    if current_i == i {
                         group.commands.draw_holdem_hand_underlight(
                             at.x,
                             at.y
@@ -350,10 +351,10 @@ pub fn update_and_render(
                         HoldemHand(index) => usize::from(index) == i,
                         HoldemMenu(_) => true,
                         _ => false,
-                    } && usize::from(current) == i;
+                    } && current_i == i;
 
                     let facing = if show_if_player_owned
-                    && state.table.personalities[usize::from(current)].is_none() {
+                    && state.table.personalities[current_i].is_none() {
                         Facing::Up(hand)
                     } else {
                         Facing::Down
@@ -423,7 +424,7 @@ pub fn update_and_render(
                             }
                             y += gfx::CHAR_LINE_ADVANCE;
 
-                            if usize::from(current) == i {
+                            if current_i == i {
                                 group.commands.print_chars(
                                     b"current",
                                     x,
@@ -501,19 +502,26 @@ pub fn update_and_render(
             }
 
             let call_amount = pot.call_amount(current);
-            let minimum_raise_total = call_amount + min_money_unit;
+            let minimum_raise_total = call_amount + min_money_unit.get();
 
             if $bundle.selection.bet < minimum_raise_total {
                 $bundle.selection.bet = minimum_raise_total;
             }
+            if $bundle.selection.bet > state.table.moneys[current_i] {
+                $bundle.selection.bet = state.table.moneys[current_i];
+            }
 
             // TODO disallow folding against a bet of 0 more.
-            let action_opt = match &state.table.personalities[usize::from(current)] {
+            let action_opt = match &state.table.personalities[current_i] {
                 Some(_personality) => {
                     // TODO Base choice off of personality
                     Some(gen_action(
                         &mut state.rng,
-                        state.table.moneys[usize::from(current)] + 1
+                        ActionSpec {
+                            one_past_max_money: NonZeroMoney::MIN.saturating_add(state.table.moneys[current_i]),
+                            min_money_unit,
+                            call_amount,
+                        }
                     ))
                 },
                 None => {
@@ -537,7 +545,7 @@ pub fn update_and_render(
                                 h: MENU_H,
                             };
 
-                            stack_money_text!(money_text = state.table.moneys[usize::from(current)]);
+                            stack_money_text!(money_text = state.table.moneys[current_i]);
 
                             group.commands.draw_nine_slice(
                                 gfx::NineSlice::Button,
@@ -604,9 +612,10 @@ pub fn update_and_render(
                                         );
                                     }
                                     ActionKind::Call => {
-                                        draw_money_in_rect!(group, call_amount, money_rect);
-
-                                        // TODO show amount
+                                        let call_remainder = call_amount.saturating_sub(
+                                            pot.amount_for(current)
+                                        );
+                                        draw_money_in_rect!(group, call_remainder, money_rect);
                                     }
                                     ActionKind::Fold => {}
                                 }
@@ -667,6 +676,8 @@ pub fn update_and_render(
 
                                 group.ctx.set_next_hot(HoldemMenu(new_id));
                             } else {
+                                // TODO don't allow selecting kinds if they cannot 
+                                // correctly be selected.
                                 match menu_id {
                                     ACTION_KIND => {
                                         if group.input.pressed_this_frame(Button::UP) {
@@ -677,9 +688,9 @@ pub fn update_and_render(
                                     }
                                     MONEY_AMOUNT => {
                                         if group.input.pressed_this_frame(Button::UP) {
-                                            $bundle.selection.bet = $bundle.selection.bet.saturating_add(min_money_unit);
+                                            $bundle.selection.bet = $bundle.selection.bet.saturating_add(min_money_unit.get());
                                         } else if group.input.pressed_this_frame(Button::DOWN) {
-                                            $bundle.selection.bet = $bundle.selection.bet.saturating_sub(min_money_unit);
+                                            $bundle.selection.bet = $bundle.selection.bet.saturating_sub(min_money_unit.get());
                                         }
                                     }
                                     _ => {}
@@ -700,32 +711,29 @@ pub fn update_and_render(
                     Action::Fold => PotAction::Fold,
                     Action::Call => {
                         match
-                            state.table.moneys[usize::from($bundle.current)]
+                            state.table.moneys[current_i]
                             .checked_sub(call_amount)
                         {
                             Some(new_amount) => {
-                                state.table.moneys[usize::from($bundle.current)] = new_amount;
+                                state.table.moneys[current_i] = new_amount;
                                 PotAction::Bet(call_amount)
                             },
                             None => {
-                                debug_assert!(
-                                    false,
-                                    "player {} called {} with only {}",
-                                    $bundle.current,
-                                    call_amount,
-                                    state.table.moneys[usize::from($bundle.current)],
+                                let action = PotAction::Bet(
+                                    state.table.moneys[current_i]
                                 );
-                                PotAction::Bet(call_amount)
+                                state.table.moneys[current_i] = 0;
+                                action
                             }
                         }
                     },
                     Action::Raise(raise_amount) => {
                         match
-                            state.table.moneys[usize::from($bundle.current)]
+                            state.table.moneys[current_i]
                             .checked_sub(raise_amount)
                         {
                             Some(new_amount) => {
-                                state.table.moneys[usize::from($bundle.current)] = new_amount;
+                                state.table.moneys[current_i] = new_amount;
                                 PotAction::Bet(raise_amount)
                             },
                             None => {
@@ -734,7 +742,7 @@ pub fn update_and_render(
                                     "player {} raised {} with only {}",
                                     $bundle.current,
                                     raise_amount,
-                                    state.table.moneys[usize::from($bundle.current)],
+                                    state.table.moneys[current_i],
                                 );
                                 PotAction::Bet(raise_amount)
                             }
@@ -918,12 +926,12 @@ pub fn update_and_render(
                         let menu_i = 1;
                         match input.dir_pressed_this_frame() {
                             Some(Dir::Up) => {
-                                *starting_money = starting_money.saturating_add(min_money_unit);
+                                *starting_money = starting_money.saturating_add(min_money_unit.get());
                             },
                             Some(Dir::Down) => {
-                                *starting_money = starting_money.saturating_sub(min_money_unit);
+                                *starting_money = starting_money.saturating_sub(min_money_unit.get());
                                 if *starting_money == 0 {
-                                    *starting_money = min_money_unit;
+                                    *starting_money = min_money_unit.get();
                                 }
                             },
                             Some(Dir::Left) => {
