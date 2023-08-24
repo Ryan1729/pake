@@ -298,7 +298,7 @@ pub mod holdem {
         }
     }
 
-    #[derive(Copy, Clone, Debug, Default)]
+    #[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
     pub enum PotAction {
         #[default]
         Fold,
@@ -345,6 +345,10 @@ pub mod holdem {
                     continue;
                 }
 
+                if self.actions[i].iter().any(|a| *a == PotAction::Fold) {
+                    continue;
+                }
+
                 if let Some(previous) = previous_amount {
                     if previous != amounts[i] {
                         return false;
@@ -354,15 +358,14 @@ pub mod holdem {
                 }
             }
 
-            true
+            let call_amount = self.call_amount();
+            previous_amount
+                .map(|amount| amount >= call_amount)
+                // If everyone is all-in, then the round is done.
+                .unwrap_or(true)
         }
 
-        /// The `caller_index` is the index of the player that is calling some 
-        /// previous bet.
-        pub fn call_amount(
-            &self,
-            caller_index: HandIndex
-        ) -> Money {
+        pub fn call_amount(&self) -> Money {
             self.amounts()
                 .iter()
                 .max()
@@ -495,7 +498,7 @@ pub mod holdem {
                     index += 1;
                 }
 
-                let actual: Money = pot.call_amount(index);
+                let actual: Money = pot.call_amount();
 
                 assert_eq!(actual, expected);
             }
@@ -587,6 +590,81 @@ pub mod holdem {
             a!([all_in(300), all_in(500), bet(900), bet(900)], [300 * 4, 200 * 3, 400 * 2]);
             a!([bet(5), bet(10), fold()], [15]);
             a!([all_in(300), fold(), all_in(500), fold(), bet(800)], [900, 400]);
+        }
+    }
+
+    #[cfg(test)]
+    mod is_round_complete_works {
+        use super::*;
+        #[derive(Debug)]
+        struct Spec {
+            action: PotAction,
+            is_all_in: bool,
+        }
+
+        fn bet(bet: Money) -> Spec {
+            Spec {
+                action: PotAction::Bet(bet),
+                is_all_in: false,
+            }
+        }
+
+        fn all_in(bet: Money) -> Spec {
+            Spec {
+                action: PotAction::Bet(bet),
+                is_all_in: true,
+            }
+        }
+
+        fn fold() -> Spec {
+            Spec {
+                action: PotAction::Fold,
+                is_all_in: false,
+            }
+        }
+
+        // Short for assert
+        macro_rules! a {
+            ($specs: expr, $expected: expr) => {
+                let specs = $specs;
+                let expected = $expected;
+
+                let mut pot = Pot::default();
+
+                let mut moneys = [0; MAX_PLAYERS as usize];
+
+                for (i, spec) in specs.iter().enumerate() {
+                    pot.push_bet(
+                        HandIndex::try_from(i).unwrap(),
+                        spec.action,
+                    );
+
+                    moneys[i] = if spec.is_all_in {
+                        0
+                    } else {
+                        1
+                    };
+                }
+
+                let actual = pot.is_round_complete(&moneys);
+
+                assert_eq!(actual, expected, "{specs:?}");
+            }
+        }
+
+        #[test]
+        fn on_these_examples() {
+            a!([bet(5), bet(10)], false);
+            a!([all_in(300), all_in(500)], true);
+            a!([all_in(300), all_in(500), all_in(800)], true);
+            a!([all_in(800), all_in(500), all_in(300)], true);
+            a!([all_in(500), all_in(300), all_in(800)], true);
+            a!([all_in(300), all_in(500), bet(800)], true);
+            a!([all_in(300), all_in(500), bet(300)], false);
+            a!([all_in(300), all_in(500), bet(800), bet(800)], true);
+            a!([all_in(300), all_in(500), bet(900), bet(900)], true);
+            a!([bet(5), bet(10), fold()], false);
+            a!([all_in(300), fold(), all_in(500), fold(), bet(800)], true);
         }
     }
     

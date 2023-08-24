@@ -359,11 +359,14 @@ pub fn update_and_render(
                     } else {
                         Facing::Down
                     };
+
                     group.commands.draw_holdem_hand(
                         facing,
                         at.x,
                         at.y,
                     );
+
+                    // TODO! show folded cards differently!
 
                     i += 1;
                 }
@@ -501,7 +504,7 @@ pub fn update_and_render(
                 // which would be some function of MAX_PLAYERS. Exactly MAX_PLAYERS?
             }
 
-            let call_amount = pot.call_amount(current);
+            let call_amount = pot.call_amount();
             let minimum_raise_total = call_amount + min_money_unit.get();
 
             if $bundle.selection.bet < minimum_raise_total {
