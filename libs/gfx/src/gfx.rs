@@ -166,6 +166,47 @@ impl Commands {
         }
     }
 
+    pub fn draw_folded_holdem_hand(
+        &mut self,
+        facing: holdem::Facing,
+        x: unscaled::X,
+        y: unscaled::Y
+    ) {
+        self.draw_holdem_hand(facing, x, y);
+        let hand_rect = unscaled::Rect {
+            x,
+            y,
+            w: Self::HOLDEM_HAND_X_OFFSET + card::WIDTH,
+            h: Self::HOLDEM_HAND_Y_OFFSET + card::HEIGHT,
+        };
+
+        let rect = unscaled::Rect {
+            y: hand_rect.y + (hand_rect.h / 2) - unscaled::H(CHAR_H.get() / 2) - CHAR_SPACING_H,
+            h: CHAR_H + 3 * CHAR_SPACING_H,
+            ..hand_rect
+        };
+
+        self.draw_nine_slice(
+            NineSlice::Window,
+            rect,
+        );
+
+        let text = b"folded";
+
+        {
+            let xy = center_line_in_rect(
+                text.len() as _,
+                rect,
+            );
+            self.print_chars(
+                text,
+                xy.x,
+                xy.y,
+                6
+            );
+        }
+    }
+
     pub fn draw_holdem_community_cards(
         &mut self,
         cards: holdem::CommunityCards,

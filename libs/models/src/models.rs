@@ -333,6 +333,14 @@ pub mod holdem {
             self.actions[usize::from(index)].push(bet);
         }
 
+        pub fn has_folded(&self, index: HandIndex) -> bool {
+            self.has_folded_i(usize::from(index))
+        }
+
+        fn has_folded_i(&self, index: usize) -> bool {
+            self.actions[index].iter().any(|a| *a == PotAction::Fold)
+        }
+
         pub fn is_round_complete(&self, current_money: &PerPlayer<Money>) -> bool {
             // TODO correct this to be checking if the pot
             // has everyone either all in, or with matching bets
@@ -345,7 +353,7 @@ pub mod holdem {
                     continue;
                 }
 
-                if self.actions[i].iter().any(|a| *a == PotAction::Fold) {
+                if self.has_folded_i(i) {
                     continue;
                 }
 

@@ -343,30 +343,51 @@ pub fn update_and_render(
             }
 
             {
-                let mut i = 0;
+                let mut i: HandIndex = 0;
                 for hand in hands.iter() {
-                    let at = coords[i];
+                    let at = coords[usize::from(i)];
 
                     let show_if_player_owned = match group.ctx.hot {
-                        HoldemHand(index) => usize::from(index) == i,
+                        HoldemHand(index) => index == i,
                         HoldemMenu(_) => true,
                         _ => false,
-                    } && current_i == i;
+                    } && current == i;
 
-                    let facing = if show_if_player_owned
-                    && state.table.personalities[current_i].is_none() {
-                        Facing::Up(hand)
+                    if pot.has_folded(i) {
+                        let facing = if let Some(_personality) = &state.table.personalities[current_i] {
+                            // TODO make decision based on personality
+                            if cfg!(debug_assertions) {
+                                Facing::Up(hand)
+                            } else {
+                                Facing::Down
+                            }
+                        } else {
+                            if show_if_player_owned {
+                                Facing::Up(hand)
+                            } else {
+                                Facing::Down
+                            }
+                        };
+
+                        group.commands.draw_folded_holdem_hand(
+                            facing,
+                            at.x,
+                            at.y,
+                        );
                     } else {
-                        Facing::Down
-                    };
+                        let facing = if show_if_player_owned
+                        && state.table.personalities[current_i].is_none() {
+                            Facing::Up(hand)
+                        } else {
+                            Facing::Down
+                        };
 
-                    group.commands.draw_holdem_hand(
-                        facing,
-                        at.x,
-                        at.y,
-                    );
-
-                    // TODO! show folded cards differently!
+                        group.commands.draw_holdem_hand(
+                            facing,
+                            at.x,
+                            at.y,
+                        );
+                    }
 
                     i += 1;
                 }
