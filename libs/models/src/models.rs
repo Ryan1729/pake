@@ -340,11 +340,19 @@ pub mod holdem {
         fn has_folded_i(&self, index: usize) -> bool {
             self.actions[index].iter().any(|a| *a == PotAction::Fold)
         }
+    }
 
-        pub fn is_round_complete(&self, current_money: &PerPlayer<Money>) -> bool {
-            // TODO correct this to be checking if the pot
-            // has everyone either all in, or with matching bets
+    #[derive(Copy, Clone, Debug, PartialEq, Eq)]
+    pub enum RoundOutcome {
+        Undetermined,
+        AdvanceToNext,
+        /// This happens if everyone but one player folds.
+        AwardNow(HandIndex),
+    }
 
+    impl Pot {
+        pub fn round_outcome(&self, current_money: &PerPlayer<Money>) -> RoundOutcome {
+            use RoundOutcome::*;
             let amounts = self.amounts();
             let mut previous_amount = None;
             for i in 0..amounts.len() {
@@ -359,7 +367,7 @@ pub mod holdem {
 
                 if let Some(previous) = previous_amount {
                     if previous != amounts[i] {
-                        return false;
+                        return Undetermined;
                     }
                 } else {
                     previous_amount = Some(amounts[i]);
@@ -367,10 +375,40 @@ pub mod holdem {
             }
 
             let call_amount = self.call_amount();
-            previous_amount
+            let is_complete = previous_amount
                 .map(|amount| amount >= call_amount)
                 // If everyone is all-in, then the round is done.
-                .unwrap_or(true)
+                .unwrap_or(true);
+
+            if is_complete {
+                // TODO? avoid this seemingly extra loop?
+                let mut unfolded_count = 0;
+                let mut last_unfolded_index = 0;
+                let mut index = 0;
+
+                for index in 0..MAX_HAND_INDEX {
+                    let i = usize::from(index);
+
+                    if amounts[i] == 0
+                    && current_money[i] == 0 {
+                        // All in with nothing? Must not be playing.
+                        continue;
+                    }
+
+                    if !self.has_folded(index) {
+                        unfolded_count += 1;
+                        last_unfolded_index = index;
+                    }
+                }
+
+                if unfolded_count == 1 {
+                    AwardNow(last_unfolded_index)
+                } else {
+                    AdvanceToNext
+                }
+            } else {
+                Undetermined
+            }
         }
 
         pub fn call_amount(&self) -> Money {
@@ -603,7 +641,8 @@ pub mod holdem {
 
     #[cfg(test)]
     mod is_round_complete_works {
-        use super::*;
+        use super::{*, RoundOutcome::*};
+
         #[derive(Debug)]
         struct Spec {
             action: PotAction,
@@ -654,7 +693,7 @@ pub mod holdem {
                     };
                 }
 
-                let actual = pot.is_round_complete(&moneys);
+                let actual = pot.round_outcome(&moneys);
 
                 assert_eq!(actual, expected, "{specs:?}");
             }
@@ -662,17 +701,20 @@ pub mod holdem {
 
         #[test]
         fn on_these_examples() {
-            a!([bet(5), bet(10)], false);
-            a!([all_in(300), all_in(500)], true);
-            a!([all_in(300), all_in(500), all_in(800)], true);
-            a!([all_in(800), all_in(500), all_in(300)], true);
-            a!([all_in(500), all_in(300), all_in(800)], true);
-            a!([all_in(300), all_in(500), bet(800)], true);
-            a!([all_in(300), all_in(500), bet(300)], false);
-            a!([all_in(300), all_in(500), bet(800), bet(800)], true);
-            a!([all_in(300), all_in(500), bet(900), bet(900)], true);
-            a!([bet(5), bet(10), fold()], false);
-            a!([all_in(300), fold(), all_in(500), fold(), bet(800)], true);
+            a!([bet(5), bet(10)], Undetermined);
+            a!([all_in(300), all_in(500)], AdvanceToNext);
+            a!([all_in(300), all_in(500), all_in(800)], AdvanceToNext);
+            a!([all_in(800), all_in(500), all_in(300)], AdvanceToNext);
+            a!([all_in(500), all_in(300), all_in(800)], AdvanceToNext);
+            a!([all_in(300), all_in(500), bet(800)], AdvanceToNext);
+            a!([all_in(300), all_in(500), bet(300)], Undetermined);
+            a!([all_in(300), all_in(500), bet(800), bet(800)], AdvanceToNext);
+            a!([all_in(300), all_in(500), bet(900), bet(900)], AdvanceToNext);
+            a!([bet(5), bet(10), fold()], Undetermined);
+            a!([all_in(300), fold(), all_in(500), fold(), bet(800)], AdvanceToNext);
+            a!([all_in(300), fold(), fold()], AwardNow(0));
+            a!([fold(), all_in(300), fold()], AwardNow(1));
+            a!([fold(), fold(), all_in(300)], AwardNow(2));
         }
     }
     
@@ -696,14 +738,6 @@ pub mod holdem {
         hands.len = player_count;
 
         (hands, deck)
-        //deck.burn();
-        //let [Some(card1), Some(card2), Some(card3)] =
-            //[deck.draw(), deck.draw(), deck.draw()]
-            //else {
-                //debug_assert!(false, "Ran out of cards with fresh deck!?");
-                //return Self::default()
-            //};
-        //community_cards: CommunityCards::Flop([card1, card2, card3]),
     }
 
     type CardIndex = u8;
@@ -738,6 +772,16 @@ pub mod holdem {
 
         pub fn burn(&mut self) {
             self.draw();
+        }
+
+        pub fn deal_community_cards(&mut self) -> Option<CommunityCards> {
+            self.burn();
+            let [Some(card1), Some(card2), Some(card3)] =
+                [self.draw(), self.draw(), self.draw()]
+                else {
+                    return None
+                };
+            Some(CommunityCards::Flop([card1, card2, card3]))
         }
     }
 

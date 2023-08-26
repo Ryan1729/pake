@@ -1,7 +1,7 @@
 #![allow(unused_imports)]
 
 use gfx::{SPACING_H, SPACING_W, Commands, Highlighting::{Highlighted, Plain}};
-use models::{Card, Money, NonZeroMoney, holdem::{MAX_PLAYERS, Action, ActionKind, ActionSpec, CommunityCards, Deck, Facing, Hand, HandIndex, HandLen, Hands, Pot, PotAction, gen_action, gen_deck, gen_hand_index}};
+use models::{Card, Money, NonZeroMoney, holdem::{MAX_PLAYERS, Action, ActionKind, ActionSpec, CommunityCards, Deck, Facing, Hand, HandIndex, HandLen, Hands, Pot, PotAction, RoundOutcome, gen_action, gen_deck, gen_hand_index}};
 use platform_types::{Button, Dir, Input, PaletteIndex, Speaker, SFX, command, unscaled};
 use xs::{Xs, Seed};
 
@@ -291,7 +291,7 @@ pub fn update_and_render(
     let min_money_unit: NonZeroMoney = NonZeroMoney::MIN.saturating_add(5 - 1);
 
     macro_rules! do_holdem_hands {
-        ($group: ident $(,)? $bundle: ident) => {
+        ($group: ident $(,)? $bundle: ident) => ({
             let group = $group;
             let hands = &$bundle.hands;
             let dealer = $bundle.dealer;
@@ -700,7 +700,7 @@ pub fn update_and_render(
 
                                 group.ctx.set_next_hot(HoldemMenu(new_id));
                             } else {
-                                // TODO don't allow selecting kinds if they cannot 
+                                // TODO don't allow selecting kinds if they cannot
                                 // correctly be selected.
                                 match menu_id {
                                     ACTION_KIND => {
@@ -781,11 +781,82 @@ pub fn update_and_render(
                     $bundle.current = 0;
                 }
 
-                let is_done = pot.is_round_complete(&state.table.moneys);
-
-                dbg!(is_done);
-                // TODO advance to next stage if done
+                pot.round_outcome(&state.table.moneys)
+            } else {
+                RoundOutcome::Undetermined
             }
+        })
+    }
+
+    macro_rules! next_bundle {
+        ($bundle: ident =
+            $hands: expr,
+            $deck: expr,
+            $dealer: expr) => {
+            let hands = $hands;
+            let deck = $deck;
+            let dealer = $dealer;
+            let player_count = hands.len();
+
+            let mut pot = Pot::with_capacity(16);
+
+            let large_blind_amount = 10;
+            let small_blind_amount = 5;
+            {
+                let mut index = dealer;
+                if player_count == HandLen::Two {
+                    // When head-to-head, the dealer posts the small blind
+                    // and the other player posts the big blind, so don't
+                    // advance.
+                } else {
+                    index += 1;
+                    if index >= hands.len().u8() {
+                        index = 0;
+                    }
+                };
+
+                let (new_total, subbed) =
+                    match state.table.moneys[usize::from(index)].checked_sub(small_blind_amount) {
+                        Some(difference) => (difference, small_blind_amount),
+                        None => (0, state.table.moneys[usize::from(index)]),
+                    };
+                state.table.moneys[usize::from(index)] = new_total;
+                pot.push_bet(index, PotAction::Bet(subbed));
+
+                index += 1;
+                if index >= hands.len().u8() {
+                    index = 0;
+                }
+
+                let (new_total, subbed) =
+                    match state.table.moneys[usize::from(index)].checked_sub(large_blind_amount) {
+                        Some(difference) => (difference, large_blind_amount),
+                        None => (0, state.table.moneys[usize::from(index)]),
+                    };
+                state.table.moneys[usize::from(index)] = new_total;
+                pot.push_bet(index, PotAction::Bet(subbed));
+            }
+
+            let current = if player_count == HandLen::Two {
+                // When head-to-head, the dealer acts first.
+                dealer
+            } else {
+                // Normally, the player after the dealer acts first.
+                let mut index = dealer + 1;
+                if index >= hands.len().u8() {
+                    index = 0;
+                }
+                index
+            };
+
+            let $bundle = HoldemStateBundle {
+                hands,
+                deck,
+                dealer,
+                current,
+                pot,
+                selection: HoldemMenuSelection::default(),
+            };
         }
     }
 
@@ -881,66 +952,10 @@ pub fn update_and_render(
 
                 let dealer = gen_hand_index(&mut state.rng, *player_count);
 
-                let mut pot = Pot::with_capacity(16);
-
-                let large_blind_amount = 10;
-                let small_blind_amount = 5;
-                {
-                    let mut index = dealer;
-                    if *player_count == HandLen::Two {
-                        // When head-to-head, the dealer posts the small blind
-                        // and the other player posts the big blind, so don't
-                        // advance.
-                    } else {
-                        index += 1;
-                        if index >= hands.len().u8() {
-                            index = 0;
-                        }
-                    };
-
-                    let (new_total, subbed) =
-                        match state.table.moneys[usize::from(index)].checked_sub(small_blind_amount) {
-                            Some(difference) => (difference, small_blind_amount),
-                            None => (0, state.table.moneys[usize::from(index)]),
-                        };
-                    state.table.moneys[usize::from(index)] = new_total;
-                    pot.push_bet(index, PotAction::Bet(subbed));
-
-                    index += 1;
-                    if index >= hands.len().u8() {
-                        index = 0;
-                    }
-
-                    let (new_total, subbed) =
-                        match state.table.moneys[usize::from(index)].checked_sub(large_blind_amount) {
-                            Some(difference) => (difference, large_blind_amount),
-                            None => (0, state.table.moneys[usize::from(index)]),
-                        };
-                    state.table.moneys[usize::from(index)] = new_total;
-                    pot.push_bet(index, PotAction::Bet(subbed));
-                }
-
-                let current = if *player_count == HandLen::Two {
-                    // When head-to-head, the dealer acts first.
-                    dealer
-                } else {
-                    // Normally, the player after the dealer acts first.
-                    let mut index = dealer + 1;
-                    if index >= hands.len().u8() {
-                        index = 0;
-                    }
-                    index
-                };
+                next_bundle!(bundle = hands, deck, dealer);
 
                 state.table.state = PreFlop {
-                    bundle: HoldemStateBundle {
-                        hands,
-                        deck,
-                        dealer,
-                        current,
-                        pot,
-                        selection: HoldemMenuSelection::default(),
-                    },
+                    bundle,
                 };
             } else {
                 let menu = [PlayerCountSelect, StartingMoneySelect, Submit];
@@ -1002,7 +1017,23 @@ pub fn update_and_render(
         },
         PreFlop { bundle } => {
             let group = new_group!();
-            do_holdem_hands!(group, bundle);
+            let outcome = do_holdem_hands!(group, bundle);
+
+            match outcome {
+                RoundOutcome::Undetermined => {},
+                RoundOutcome::AdvanceToNext => {
+                    let community_cards = bundle
+                        .deck
+                        .deal_community_cards()
+                        .expect("Deck ran out!?");
+                    next_bundle!(new_bundle = bundle.hands, bundle.deck, bundle.dealer);
+                    state.table.state = PostFlop {
+                        bundle: new_bundle,
+                        community_cards
+                    };
+                },
+                _ => { dbg!(outcome); },
+            }
         },
         PostFlop { bundle, community_cards } => {
             let group = new_group!();
@@ -1013,7 +1044,12 @@ pub fn update_and_render(
                 COMMUNITY_BASE_Y,
             );
 
-            do_holdem_hands!(group, bundle);
+            let outcome = do_holdem_hands!(group, bundle);
+
+            match outcome {
+                RoundOutcome::Undetermined => {},
+                _ => { dbg!(outcome); },
+            }
         },
     }
 }
