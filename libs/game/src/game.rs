@@ -792,50 +792,16 @@ pub fn update_and_render(
         ($bundle: ident =
             $hands: expr,
             $deck: expr,
-            $dealer: expr) => {
+            $dealer: expr,
+            $pot: expr
+        ) => {
             let hands = $hands;
             let deck = $deck;
             let dealer = $dealer;
             let player_count = hands.len();
+            let mut pot = $pot;
 
-            let mut pot = Pot::with_capacity(16);
-
-            let large_blind_amount = 10;
-            let small_blind_amount = 5;
-            {
-                let mut index = dealer;
-                if player_count == HandLen::Two {
-                    // When head-to-head, the dealer posts the small blind
-                    // and the other player posts the big blind, so don't
-                    // advance.
-                } else {
-                    index += 1;
-                    if index >= hands.len().u8() {
-                        index = 0;
-                    }
-                };
-
-                let (new_total, subbed) =
-                    match state.table.moneys[usize::from(index)].checked_sub(small_blind_amount) {
-                        Some(difference) => (difference, small_blind_amount),
-                        None => (0, state.table.moneys[usize::from(index)]),
-                    };
-                state.table.moneys[usize::from(index)] = new_total;
-                pot.push_bet(index, PotAction::Bet(subbed));
-
-                index += 1;
-                if index >= hands.len().u8() {
-                    index = 0;
-                }
-
-                let (new_total, subbed) =
-                    match state.table.moneys[usize::from(index)].checked_sub(large_blind_amount) {
-                        Some(difference) => (difference, large_blind_amount),
-                        None => (0, state.table.moneys[usize::from(index)]),
-                    };
-                state.table.moneys[usize::from(index)] = new_total;
-                pot.push_bet(index, PotAction::Bet(subbed));
-            }
+            pot.reset_for_new_round();
 
             let current = if player_count == HandLen::Two {
                 // When head-to-head, the dealer acts first.
@@ -952,7 +918,9 @@ pub fn update_and_render(
 
                 let dealer = gen_hand_index(&mut state.rng, *player_count);
 
-                next_bundle!(bundle = hands, deck, dealer);
+                let mut pot = Pot::with_capacity(*player_count, 16);
+
+                next_bundle!(bundle = hands, deck, dealer, pot);
 
                 state.table.state = PreFlop {
                     bundle,
@@ -1026,7 +994,13 @@ pub fn update_and_render(
                         .deck
                         .deal_community_cards()
                         .expect("Deck ran out!?");
-                    next_bundle!(new_bundle = bundle.hands, bundle.deck, bundle.dealer);
+                    next_bundle!(
+                        new_bundle = 
+                            bundle.hands.clone(),
+                            bundle.deck.clone(),
+                            bundle.dealer,
+                            bundle.pot.clone()
+                    );
                     state.table.state = PostFlop {
                         bundle: new_bundle,
                         community_cards

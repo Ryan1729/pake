@@ -1,6 +1,14 @@
 use xs::Xs;
 use core::num::NonZeroU32;
 
+macro_rules! compile_time_assert {
+    ($assertion: expr) => (
+        #[allow(unknown_lints, clippy::eq_op)]
+        // Based on the const_assert macro from static_assertions;
+        const _: [(); 0 - !{$assertion} as usize] = [];
+    )
+}
+
 pub const RANK_COUNT: u8 = 13;
 pub const SUIT_COUNT: u8 = 4;
 pub const DECK_SIZE: u8 = RANK_COUNT * SUIT_COUNT;
@@ -128,12 +136,35 @@ pub mod holdem {
         Up(Hand),
     }
 
+    /// Does not necessarily contain a valid number of players for a round.
+    /// For a type with that guarentee see `HandLen`.
+    pub type PlayerAmount = u8;
+
     /// With 52 cards, and 5 community cards, and 3 burn cards,
     /// that leaves 44 cards left over so the maximum amount of
     /// possible hands is 22.
-    pub const MAX_PLAYERS: u8 = 22;
+    pub const MAX_PLAYERS: PlayerAmount = 22;
 
     pub type PerPlayer<A> = [A; MAX_PLAYERS as usize];
+
+    type PerPlayerBits = u32;
+    #[derive(Clone, Copy, Debug, Default)]
+    pub struct PerPlayerBitset(PerPlayerBits);
+
+    compile_time_assert!{
+        PerPlayerBits::BITS >= MAX_PLAYERS as u32
+    }
+
+    impl PerPlayerBitset {
+        pub fn len(&self) -> PlayerAmount {
+            self.0.count_ones() as PlayerAmount
+        }
+
+        pub fn set(&mut self, index: HandIndex){
+            if index > MAX_PLAYERS { return }
+            self.0 |= 1 << PerPlayerBits::from(index);
+        }
+    }
 
     pub type HandIndex = u8;
     pub const MAX_HAND_INDEX: u8 = MAX_PLAYERS - 1;
@@ -277,6 +308,10 @@ pub mod holdem {
             }
         }
 
+        pub fn amount(self) -> PlayerAmount {
+            self.u8()
+        }
+
         pub fn usize(self) -> usize {
             usize::from(self.u8())
         }
@@ -305,7 +340,7 @@ pub mod holdem {
         Bet(Money)
     }
 
-    #[derive(Clone, Debug, Default)]
+    #[derive(Clone, Debug)]
     pub struct Pot {
         // TODO? Is there a way to get a firm upper bound for the number of actions
         // per round? Maybe we could impose a (generous) raise limit then calculate
@@ -315,12 +350,18 @@ pub mod holdem {
         // number of allocations. Without any known speed concerns, or another use
         // case for an arena, bringing in that dependency doesn't currently seem
         // worth it.
-        pub actions: PerPlayer<Vec<PotAction>>,
+        actions: PerPlayer<Vec<PotAction>>,
+        player_count: HandLen,
+        has_gone_this_round: PerPlayerBitset,
     }
 
     impl Pot {
-        pub fn with_capacity(capacity: usize) -> Self {
-            let mut output = Pot::default();
+        pub fn with_capacity(player_count: HandLen, capacity: usize) -> Self {
+            let mut output = Pot{
+                actions: <_>::default(),
+                player_count,
+                has_gone_this_round: <_>::default(),
+            };
 
             for vec in &mut output.actions {
                 *vec = Vec::with_capacity(capacity);
@@ -330,7 +371,12 @@ pub mod holdem {
         }
 
         pub fn push_bet(&mut self, index: HandIndex, bet: PotAction) {
+            self.has_gone_this_round.set(index);
             self.actions[usize::from(index)].push(bet);
+        }
+
+        pub fn reset_for_new_round(&mut self) {
+            self.has_gone_this_round = <_>::default();
         }
 
         pub fn has_folded(&self, index: HandIndex) -> bool {
@@ -353,6 +399,12 @@ pub mod holdem {
     impl Pot {
         pub fn round_outcome(&self, current_money: &PerPlayer<Money>) -> RoundOutcome {
             use RoundOutcome::*;
+
+            if self.has_gone_this_round.len() < self.player_count.amount() {
+                // Rounds aren't complete until everyone has had a chance to move.
+                return Undetermined;
+            }
+
             let amounts = self.amounts();
             let mut previous_amount = None;
             for i in 0..amounts.len() {
