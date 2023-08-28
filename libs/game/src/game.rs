@@ -1022,6 +1022,23 @@ pub fn update_and_render(
 
             match outcome {
                 RoundOutcome::Undetermined => {},
+                RoundOutcome::AdvanceToNext => {
+                    bundle
+                        .deck
+                        .deal_to_community_cards(community_cards);
+
+                    next_bundle!(
+                        new_bundle = 
+                            bundle.hands.clone(),
+                            bundle.deck.clone(),
+                            bundle.dealer,
+                            bundle.pot.clone()
+                    );
+                    state.table.state = PostFlop {
+                        bundle: new_bundle,
+                        community_cards: *community_cards,
+                    };
+                },
                 _ => { dbg!(outcome); },
             }
         },

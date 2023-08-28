@@ -835,6 +835,33 @@ pub mod holdem {
                 };
             Some(CommunityCards::Flop([card1, card2, card3]))
         }
+
+        pub fn deal_to_community_cards(
+            &mut self,
+            community_cards: &mut CommunityCards
+        ) {
+            match *community_cards {
+                CommunityCards::Flop(flop) => {
+                    self.burn();
+                    if let Some(turn) = self.draw() {
+                        *community_cards = CommunityCards::Turn(flop, turn);
+                    } else {
+                        debug_assert!(false, "Ran out of cards for turn!");
+                    }
+                },
+                CommunityCards::Turn(flop, turn) => {
+                    self.burn();
+                    if let Some(river) = self.draw() {
+                        *community_cards = CommunityCards::River(flop, turn, river);
+                    } else {
+                        debug_assert!(false, "Ran out of cards for river!");
+                    }
+                }
+                CommunityCards::River(..) => {
+                    // Nothing left to deal out.
+                }
+            }
+        }
     }
 
     pub fn gen_deck(rng: &mut Xs) -> Deck {
