@@ -47,7 +47,7 @@ impl Commands {
         fn get_char_xy(sprite_number: u8) -> sprite::XY {
             type Inner = sprite::Inner;
             let sprite_number = Inner::from(sprite_number);
-            const CH_SIZE: Inner = CHAR_SIZE as Inner;
+            const CH_SIZE: Inner = 8;
             const SPRITES_PER_ROW: Inner = FONT_WIDTH as Inner / CH_SIZE;
         
             sprite::XY {
@@ -591,16 +591,17 @@ pub fn get_rank_char_from_rank(rank: Rank) -> u8 {
 pub const CHAR_SPACING: u8 = 2;
 pub const CHAR_SPACING_W: unscaled::W = unscaled::W(CHAR_SPACING as _);
 pub const CHAR_SPACING_H: unscaled::H = unscaled::H(CHAR_SPACING as _);
-pub const CHAR_SIZE: u8 = 8;
-pub const CHAR_ADVANCE: unscaled::W = unscaled::W(4);
-pub const CHAR_W: unscaled::W = unscaled::W(CHAR_SIZE as _);
-pub const CHAR_H: unscaled::H = unscaled::H(CHAR_SIZE as _);
+pub const CHAR_WIDTH: u8 = 4;
+pub const CHAR_HEIGHT: u8 = 8;
+pub const CHAR_ADVANCE: unscaled::W = unscaled::W(CHAR_WIDTH as _);
+pub const CHAR_W: unscaled::W = unscaled::W(CHAR_WIDTH as _);
+pub const CHAR_H: unscaled::H = unscaled::H(CHAR_HEIGHT as _);
 pub const CHAR_LINE_ADVANCE: unscaled::H = unscaled::H(
-    CHAR_SIZE as unscaled::Inner
+    CHAR_HEIGHT as unscaled::Inner
     + CHAR_SPACING as unscaled::Inner
 );
 
-pub const SPACING: u8 = CHAR_SIZE;
+pub const SPACING: u8 = CHAR_HEIGHT; // Larger of CHAR_WIDTH/CHAR_HEIGHT
 pub const SPACING_W: unscaled::W = unscaled::W(SPACING as _);
 pub const SPACING_H: unscaled::H = unscaled::H(SPACING as _);
 

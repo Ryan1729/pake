@@ -144,6 +144,8 @@ pub mod holdem {
     /// that leaves 44 cards left over so the maximum amount of
     /// possible hands is 22.
     pub const MAX_PLAYERS: PlayerAmount = 22;
+    // TODO? Is the amount of possible pots MAX_PLAYERS - 1? Or even lower?
+    pub const MAX_POTS: u8 = MAX_PLAYERS;
 
     pub type PerPlayer<A> = [A; MAX_PLAYERS as usize];
 
@@ -888,5 +890,7 @@ pub mod holdem {
             Self::Flop(<_>::default())
         }
     }
+
+    pub type FullBoard = [Card; 5];
 }
 

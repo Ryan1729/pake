@@ -1,7 +1,7 @@
 #![allow(unused_imports)]
 
 use gfx::{SPACING_H, SPACING_W, Commands, Highlighting::{Highlighted, Plain}};
-use models::{Card, Money, NonZeroMoney, holdem::{MAX_PLAYERS, Action, ActionKind, ActionSpec, CommunityCards, Deck, Facing, Hand, HandIndex, HandLen, Hands, Pot, PotAction, RoundOutcome, gen_action, gen_deck, gen_hand_index}};
+use models::{Card, Money, NonZeroMoney, holdem::{MAX_PLAYERS, MAX_POTS, Action, ActionKind, ActionSpec, CommunityCards, Deck, Facing, FullBoard, Hand, HandIndex, HandLen, Hands, PerPlayer, Pot, PotAction, RoundOutcome, gen_action, gen_deck, gen_hand_index}};
 use platform_types::{Button, Dir, Input, PaletteIndex, Speaker, SFX, command, unscaled};
 use xs::{Xs, Seed};
 
@@ -32,6 +32,10 @@ pub enum HoldemState {
     PostFlop {
         bundle: HoldemStateBundle,
         community_cards: CommunityCards,
+    },
+    Showdown {
+        bundle: HoldemStateBundle,
+        full_board: FullBoard,
     },
 }
 
@@ -513,7 +517,7 @@ pub fn update_and_render(
 
                     group.commands.print_chars(
                         &main_pot_text,
-                        COMMUNITY_BASE_X - pre_nul_len(&main_pot_text) * gfx::CHAR_W,
+                        COMMUNITY_BASE_X - pre_nul_len(&main_pot_text) * gfx::CHAR_ADVANCE,
                         y,
                         6
                     );
@@ -1023,24 +1027,161 @@ pub fn update_and_render(
             match outcome {
                 RoundOutcome::Undetermined => {},
                 RoundOutcome::AdvanceToNext => {
-                    bundle
-                        .deck
-                        .deal_to_community_cards(community_cards);
+                    match *community_cards {
+                        CommunityCards::Flop(flop) => {
+                            bundle.deck.burn();
+                            if let Some(turn) = bundle.deck.draw() {
+                                *community_cards = CommunityCards::Turn(flop, turn);
+                            } else {
+                                debug_assert!(false, "Ran out of cards for turn!");
+                            }
 
-                    next_bundle!(
-                        new_bundle = 
-                            bundle.hands.clone(),
-                            bundle.deck.clone(),
-                            bundle.dealer,
-                            bundle.pot.clone()
-                    );
-                    state.table.state = PostFlop {
-                        bundle: new_bundle,
-                        community_cards: *community_cards,
-                    };
+                            next_bundle!(
+                                new_bundle = 
+                                    bundle.hands.clone(),
+                                    bundle.deck.clone(),
+                                    bundle.dealer,
+                                    bundle.pot.clone()
+                            );
+                            state.table.state = PostFlop {
+                                bundle: new_bundle,
+                                community_cards: *community_cards,
+                            };
+                        },
+                        CommunityCards::Turn(flop, turn) => {
+                            bundle.deck.burn();
+                            if let Some(river) = bundle.deck.draw() {
+                                *community_cards = CommunityCards::River(flop, turn, river);
+                            } else {
+                                debug_assert!(false, "Ran out of cards for river!");
+                            }
+
+                            next_bundle!(
+                                new_bundle = 
+                                    bundle.hands.clone(),
+                                    bundle.deck.clone(),
+                                    bundle.dealer,
+                                    bundle.pot.clone()
+                            );
+                            state.table.state = PostFlop {
+                                bundle: new_bundle,
+                                community_cards: *community_cards,
+                            };
+                        }
+                        CommunityCards::River(flop, turn, river) => {
+                            state.table.state = Showdown {
+                                bundle: bundle.clone(),
+                                full_board: [
+                                    flop[0],
+                                    flop[1],
+                                    flop[2],
+                                    turn,
+                                    river
+                                ],
+                            };
+                        }
+                    }
                 },
                 _ => { dbg!(outcome); },
             }
+        },
+        Showdown { bundle, full_board } => {
+            let group = new_group!();
+
+            // If we'd be able to see something under the modal, sure.
+            //let _outcome = do_holdem_hands!(group, bundle);
+
+            // TODO draw a modal that shows who won how much, and have
+            // a button to go on to the next game.
+
+            const SHOWDOWN_MODAL_RECT: unscaled::Rect = unscaled::Rect {
+                x: unscaled::X(0),
+                y: unscaled::Y(0),
+                w: command::WIDTH_W,
+                h: command::HEIGHT_H,
+            };
+
+            group.commands.draw_nine_slice(
+                gfx::NineSlice::Window,
+                SHOWDOWN_MODAL_RECT
+            );
+
+            type Awards = PerPlayer<[Money; MAX_POTS as usize]>;
+
+            let awards: Awards = {
+                let mut awards = Awards::default();
+
+                awards[0][0] = 1234;
+                awards[0][1] = 234;
+                awards[1][0] = 34;
+
+                awards
+                //let awards = f(pot, hands, full_board);
+            };
+
+            {
+                let mut y = unscaled::Y(gfx::CHAR_LINE_ADVANCE.get());
+                for (i, award) in awards.iter().enumerate() {
+                    let mut any_non_zero = false;
+                    for money in award {
+                        if *money != 0 {
+                            any_non_zero = true;
+                            break
+                        }
+                    }
+                    if !any_non_zero {
+                        continue
+                    }
+
+                    let mut player_text = [0 as u8; 20];
+                    player_text[0] = b'p';
+                    player_text[1] = b'l';
+                    player_text[2] = b'a';
+                    player_text[3] = b'y';
+                    player_text[4] = b'e';
+                    player_text[5] = b'r';
+                    player_text[6] = b' ';
+
+                    let _cant_actually_fail = write!(
+                        &mut player_text[7..],
+                        "{i}",
+                    );
+        
+                    group.commands.print_chars(
+                        &player_text,
+                        COMMUNITY_BASE_X - (pre_nul_len(&player_text) * gfx::CHAR_ADVANCE),
+                        y,
+                        6
+                    );
+
+                    y += gfx::CHAR_LINE_ADVANCE;
+
+                    for money in award {
+                        if *money == 0 {
+                            break
+                        }
+
+                        stack_money_text!(money_text = money);
+
+                        group.commands.print_chars(
+                            &money_text,
+                            COMMUNITY_BASE_X - (pre_nul_len(&money_text) * gfx::CHAR_ADVANCE),
+                            y,
+                            6
+                        );
+
+                        y += gfx::CHAR_LINE_ADVANCE;
+                    }
+
+                    y += gfx::CHAR_LINE_ADVANCE;
+                }
+            }
+
+            //if do_button() {
+                //for award in awards {
+                    //
+                //}
+            //}
         },
     }
 }
