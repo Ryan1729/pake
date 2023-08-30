@@ -1,11 +1,16 @@
 
 use models::holdem;
 
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Eval(poker::Eval);
+
+impl Eval {
+    pub const WORST: Eval = Eval(poker::Eval::WORST);
+}
 
 impl Default for Eval {
     fn default() -> Self {
-        Self(poker::Eval::WORST)
+        Eval::WORST
     }
 }
 

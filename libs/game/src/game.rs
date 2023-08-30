@@ -1106,25 +1106,77 @@ pub fn update_and_render(
                 SHOWDOWN_MODAL_RECT
             );
 
-            type Awards = PerPlayer<[Money; MAX_POTS as usize]>;
+            #[derive(Default)]
+            struct Award {
+                amount: Money,
+                eval: evaluate::Eval,
+            }
+            type Awards = PerPlayer<[Award; MAX_POTS as usize]>;
 
             let awards: Awards = {
                 let mut awards = Awards::default();
 
-                awards[0][0] = 1234;
-                awards[0][1] = 234;
-                awards[1][0] = 34;
+                for (eligibile_players, amount) in bundle.pot.eligibilities() {
+                    let mut winner_count = 0;
+                    let mut winners = [
+                        (0, evaluate::Eval::WORST);
+                        MAX_POTS as usize
+                    ];
+
+                    for player in eligibile_players.iter() {
+                        let best_eval = {
+                            let Some(hand) = bundle.hands.get(player) else {
+                                debug_assert!(false, "Hand not found for {player}");
+                                continue
+                            };
+                            evaluate::holdem_hand(
+                                CommunityCards::from(*full_board),
+                                *hand,
+                            )
+                        };
+
+                        use core::cmp::Ordering::*;
+                        match best_eval.cmp(&winners[0].1) {
+                            Greater => {
+                                winner_count = 0;
+                                winners[winner_count] = (player, best_eval);
+                            },
+                            Equal => {
+                                winner_count += 1;
+                                winners[winner_count] = (player, best_eval);
+                            },
+                            Less => {
+                                // next iteration
+                            }
+                        }
+                    }
+
+                    debug_assert!(winner_count > 0);
+
+                    for i in 0..winner_count {
+                        let (winner_index, winner_eval) = winners[i];
+
+                        // Push an award on
+                        for award in &mut awards[usize::from(winner_index)] {
+                            if award.amount == 0 {
+                                *award = Award {
+                                    amount,
+                                    eval: winner_eval,
+                                };
+                            }
+                        }
+                    }
+                }
 
                 awards
-                //let awards = f(pot, hands, full_board);
             };
 
             {
                 let mut y = unscaled::Y(gfx::CHAR_LINE_ADVANCE.get());
-                for (i, award) in awards.iter().enumerate() {
+                for (i, award_array) in awards.iter().enumerate() {
                     let mut any_non_zero = false;
-                    for money in award {
-                        if *money != 0 {
+                    for Award { amount, .. } in award_array {
+                        if *amount != 0 {
                             any_non_zero = true;
                             break
                         }
@@ -1156,16 +1208,16 @@ pub fn update_and_render(
 
                     y += gfx::CHAR_LINE_ADVANCE;
 
-                    for money in award {
-                        if *money == 0 {
+                    for Award { amount, .. } in award_array {
+                        if *amount == 0 {
                             break
                         }
 
-                        stack_money_text!(money_text = money);
+                        stack_money_text!(amount_text = amount);
 
                         group.commands.print_chars(
-                            &money_text,
-                            COMMUNITY_BASE_X - (pre_nul_len(&money_text) * gfx::CHAR_ADVANCE),
+                            &amount_text,
+                            COMMUNITY_BASE_X - (pre_nul_len(&amount_text) * gfx::CHAR_ADVANCE),
                             y,
                             6
                         );

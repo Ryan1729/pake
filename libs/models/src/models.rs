@@ -166,6 +166,38 @@ pub mod holdem {
             if index > MAX_PLAYERS { return }
             self.0 |= 1 << PerPlayerBits::from(index);
         }
+
+        pub fn iter(self) -> PerPlayerBitsetIter {
+            PerPlayerBitsetIter { 
+                set: self,
+                index: 0,
+            }
+        }
+    }
+
+    pub struct PerPlayerBitsetIter {
+        set: PerPlayerBitset,
+        index: HandIndex,
+    }
+
+    impl Iterator for PerPlayerBitsetIter {
+        type Item = HandIndex;
+
+        fn next(&mut self) -> Option<Self::Item> {
+            while self.index < MAX_PLAYERS {
+                if (self.set.0 & 1 << self.index) != 0 {
+                    let output = self.index;
+
+                    self.index += 1;
+
+                    return Some(output);
+                }
+
+                self.index += 1;
+            }
+
+            None
+        }
     }
 
     pub type HandIndex = u8;
@@ -333,6 +365,10 @@ pub mod holdem {
         pub fn len(&self) -> HandLen {
             self.len
         }
+
+        pub fn get(&self, index: HandIndex) -> Option<&Hand> {
+            self.hands.get(usize::from(index))
+        }
     }
 
     #[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
@@ -387,6 +423,12 @@ pub mod holdem {
 
         fn has_folded_i(&self, index: usize) -> bool {
             self.actions[index].iter().any(|a| *a == PotAction::Fold)
+        }
+
+        pub fn eligibilities(&self) -> impl Iterator<Item = (PerPlayerBitset, Money)> {
+            todo!();
+
+            [].into_iter()
         }
     }
 
@@ -892,5 +934,19 @@ pub mod holdem {
     }
 
     pub type FullBoard = [Card; 5];
+
+    impl From<FullBoard> for CommunityCards {
+        fn from(full_board: FullBoard) -> Self {
+            Self::River(
+                [
+                    full_board[0],
+                    full_board[1],
+                    full_board[2],
+                ],
+                full_board[3],
+                full_board[4],
+            )
+        }
+    }
 }
 
