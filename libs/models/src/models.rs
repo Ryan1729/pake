@@ -424,12 +424,6 @@ pub mod holdem {
         fn has_folded_i(&self, index: usize) -> bool {
             self.actions[index].iter().any(|a| *a == PotAction::Fold)
         }
-
-        pub fn eligibilities(&self) -> impl Iterator<Item = (PerPlayerBitset, Money)> {
-            todo!();
-
-            [].into_iter()
-        }
     }
 
     #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -515,10 +509,10 @@ pub mod holdem {
                 .unwrap_or_default()
         }
 
-        pub fn individual_pots(
+        pub fn eligibilities(
             &self,
-            current_money: &PerPlayer<Money>
-        ) -> impl Iterator<Item = Money> {
+            current_money: &PerPlayer<Money>,
+        ) -> impl Iterator<Item = (PerPlayerBitset, Money)> {
             // A side pot exists if there is a higher amount than someone who is
             // still in, has bet. (TODO? filter out in-progress bets?)
 
@@ -543,11 +537,12 @@ pub mod holdem {
                         }
                     }
 
-                    let mut contributor_count: Money = 0;
+                    let mut contributors = PerPlayerBitset::default();
                     let mut output: Money = 0;
-                    for i in 0..amounts.len() {
+                    for index in 0..MAX_PLAYERS {
+                        let i = usize::from(index);
                         if amounts[i] > 0 {
-                            contributor_count += 1;
+                            contributors.set(index);
                             match amounts[i].checked_sub(min_all_in) {
                                 Some(new_amount) => {
                                     output = output.saturating_add(min_all_in);
@@ -562,11 +557,18 @@ pub mod holdem {
                     }
                     // Side pots with one player in them are "trivial" and not
                     // desired to be returned
-                    if contributor_count > 1 && output != 0 {
-                        return Some(output)
+                    if contributors.len() > 1 && output != 0 {
+                        return Some((contributors, output))
                     }
                 }
             })
+        }
+
+        pub fn individual_pots(
+            &self,
+            current_money: &PerPlayer<Money>,
+        ) -> impl Iterator<Item = Money> {
+            self.eligibilities(current_money).map(|(_, money)| money)
         }
 
         pub fn amount_for(&self, index: HandIndex) -> Money {

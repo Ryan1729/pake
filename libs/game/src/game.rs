@@ -1116,7 +1116,7 @@ pub fn update_and_render(
             let awards: Awards = {
                 let mut awards = Awards::default();
 
-                for (eligibile_players, amount) in bundle.pot.eligibilities() {
+                for (eligibile_players, amount) in bundle.pot.eligibilities(&state.table.moneys) {
                     let mut winner_count = 0;
                     let mut winners = [
                         (0, evaluate::Eval::WORST);
