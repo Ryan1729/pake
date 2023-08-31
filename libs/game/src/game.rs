@@ -1164,6 +1164,7 @@ pub fn update_and_render(
                                     amount,
                                     eval: winner_eval,
                                 };
+                                break
                             }
                         }
                     }
