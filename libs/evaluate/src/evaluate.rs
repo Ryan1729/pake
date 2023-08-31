@@ -16,7 +16,13 @@ impl Default for Eval {
 
 impl core::fmt::Display for Eval {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        write!(f, "Eval {}", self.0)
+        write!(f, "{}", self.0)
+    }
+}
+
+impl core::fmt::Debug for Eval {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "Eval({})", self.0)
     }
 }
 

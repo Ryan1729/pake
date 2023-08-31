@@ -1106,13 +1106,14 @@ pub fn update_and_render(
                 SHOWDOWN_MODAL_RECT
             );
 
-            #[derive(Default)]
+            #[derive(Debug, Default)]
             struct Award {
                 amount: Money,
                 eval: evaluate::Eval,
             }
             type Awards = PerPlayer<[Award; MAX_POTS as usize]>;
 
+            // TODO Extract this into a function and add some tests for it
             let awards: Awards = {
                 let mut awards = Awards::default();
 
@@ -1136,14 +1137,14 @@ pub fn update_and_render(
                         };
 
                         use core::cmp::Ordering::*;
-                        match best_eval.cmp(&winners[0].1) {
+                        match dbg!(best_eval.cmp(&winners[0].1)) {
                             Greater => {
-                                winner_count = 0;
-                                winners[winner_count] = (player, best_eval);
+                                winner_count = 1;
+                                winners[winner_count - 1] = (player, best_eval);
                             },
                             Equal => {
                                 winner_count += 1;
-                                winners[winner_count] = (player, best_eval);
+                                winners[winner_count - 1] = (player, best_eval);
                             },
                             Less => {
                                 // next iteration

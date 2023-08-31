@@ -555,9 +555,8 @@ pub mod holdem {
                             }
                         }
                     }
-                    // Side pots with one player in them are "trivial" and not
-                    // desired to be returned
-                    if contributors.len() > 1 && output != 0 {
+                    
+                    if contributors.len() > 0 && output != 0 {
                         return Some((contributors, output))
                     }
                 }
@@ -568,7 +567,14 @@ pub mod holdem {
             &self,
             current_money: &PerPlayer<Money>,
         ) -> impl Iterator<Item = Money> {
-            self.eligibilities(current_money).map(|(_, money)| money)
+            self.eligibilities(current_money).filter(
+                |(contributors, money)| {
+                    // Side pots with one player in them are "trivial" and not
+                    // desired to be returned
+                    contributors.len() > 1 && *money != 0
+                }
+            )
+            .map(|(_, money)| money)
         }
 
         pub fn amount_for(&self, index: HandIndex) -> Money {
