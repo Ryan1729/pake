@@ -1113,7 +1113,6 @@ pub fn update_and_render(
             }
             type Awards = PerPlayer<[Award; MAX_POTS as usize]>;
 
-            // TODO Extract this into a function and add some tests for it
             let awards: Awards = {
                 let mut awards = Awards::default();
 
@@ -1137,7 +1136,7 @@ pub fn update_and_render(
                         };
 
                         use core::cmp::Ordering::*;
-                        match dbg!(best_eval.cmp(&winners[0].1)) {
+                        match best_eval.cmp(&winners[0].1) {
                             Greater => {
                                 winner_count = 1;
                                 winners[winner_count - 1] = (player, best_eval);
@@ -1154,8 +1153,32 @@ pub fn update_and_render(
 
                     debug_assert!(winner_count > 0);
 
+                    let award_amounts: PerPlayer<Money> = {
+                        let mut award_amounts = PerPlayer::<Money>::default();
+
+                        let mut remaining = amount;
+
+                        debug_assert!(remaining % min_money_unit == 0);
+
+                        // TODO? More efficient version of this?
+                        // Will this actually ever be a bottleneck?
+                        let mut i = 0;
+                        while remaining > 0 {
+                            remaining = remaining.saturating_sub(min_money_unit.get());
+                            award_amounts[i] = award_amounts[i].saturating_add(min_money_unit.get());
+
+                            i += 1;
+                            if i >= usize::from(MAX_PLAYERS) {
+                                i = 0;
+                            }
+                        }
+
+                        award_amounts
+                    };
                     for i in 0..winner_count {
                         let (winner_index, winner_eval) = winners[i];
+
+                        let amount = award_amounts[i];
 
                         // Push an award on
                         for award in &mut awards[usize::from(winner_index)] {
