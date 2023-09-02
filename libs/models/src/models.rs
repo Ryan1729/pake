@@ -351,6 +351,38 @@ pub mod holdem {
         }
     }
 
+    impl TryFrom<u8> for HandLen {
+        type Error = ();
+
+        fn try_from(byte: u8) -> Result<Self, Self::Error> {
+            use HandLen::*;
+            match byte {
+                2 => Ok(Two),
+                3 => Ok(Three),
+                4 => Ok(Four),
+                5 => Ok(Five),
+                6 => Ok(Six),
+                7 => Ok(Seven),
+                8 => Ok(Eight),
+                9 => Ok(Nine),
+                10 => Ok(Ten),
+                11 => Ok(Eleven),
+                12 => Ok(Twelve),
+                13 => Ok(Thirteen),
+                14 => Ok(Fourteen),
+                15 => Ok(Fifteen),
+                16 => Ok(Sixteen),
+                17 => Ok(Seventeen),
+                18 => Ok(Eightteen),
+                19 => Ok(Nineteen),
+                20 => Ok(Twenty),
+                21 => Ok(TwentyOne),
+                22 => Ok(TwentyTwo),
+                _ => Err(())
+            }
+        }
+    }
+
     #[derive(Clone, Debug, Default)]
     pub struct Hands {
         hands: PerPlayer<Hand>,

@@ -103,6 +103,7 @@ mod ui {
         StartingMoneySelect,
         HoldemHand(HandIndex),
         HoldemMenu(HoldemMenuId),
+        ShowdownSubmit,
     }
 
     #[derive(Copy, Clone, Default, Debug)]
@@ -830,6 +831,89 @@ pub fn update_and_render(
         }
     }
 
+    macro_rules! finish_round {
+        () => {
+            // TOD0 option to skip watching remaining players if they are all
+            // CPUs
+
+            // Condense players down
+            {
+                let mut pairs: [(Money, Option<CpuPersonality>); MAX_PLAYERS as usize]
+                    = <_>::default();
+
+                let mut pair_index = 0;
+                for i in 0..state.table.moneys.len() {
+                    if state.table.moneys[i] == 0 {
+                        continue
+                    }
+                    pairs[pair_index] = (
+                        state.table.moneys[i],
+                        state.table.personalities[i].take(),
+                    );
+                    pair_index += 1;
+                }
+
+                for i in 0..state.table.moneys.len() {
+                    state.table.moneys[i] = 0;
+                    state.table.personalities[i] = None;
+                }
+
+                for i in 0..state.table.moneys.len() {
+                    let money = pairs[i].0;
+                    if money == 0 {
+                        break
+                    }
+                    let personality = pairs[i].1.take();
+                    state.table.moneys[i] = money;
+                    state.table.personalities[i] = personality;
+                }
+            }
+
+            let remaining_player_count = {
+                let mut remaining_player_count = 0;
+
+                // Assumes we just condensed the players
+                for money in state.table.moneys.iter() {
+                    if *money == 0 {
+                        break
+                    }
+                    remaining_player_count += 1;
+                }
+
+                remaining_player_count
+            };
+
+            debug_assert!(remaining_player_count > 0);
+            dbg!(remaining_player_count);
+
+            match HandLen::try_from(remaining_player_count){
+                Ok(player_count) => {
+                    let (hands, deck) = models::holdem::deal(&mut state.rng, player_count);
+
+                    let dealer = gen_hand_index(&mut state.rng, player_count);
+
+                    let mut pot = Pot::with_capacity(player_count, 16);
+
+                    next_bundle!(bundle = hands, deck, dealer, pot);
+
+                    state.table.state = PreFlop {
+                        bundle,
+                    };
+                },
+                Err(_) => {
+                    // TODO show a winner screen with more winner info.
+                    if state.table.personalities[0].is_none() {
+                        println!("User wins!");
+                    } else {
+                        println!("Cpu player wins!");
+                    }
+
+                    state.table.state = <_>::default();
+                },
+            };
+        }
+    }
+
     match &mut state.table.state {
         Undealt {
             ref mut player_count,
@@ -999,7 +1083,7 @@ pub fn update_and_render(
                         .deal_community_cards()
                         .expect("Deck ran out!?");
                     next_bundle!(
-                        new_bundle = 
+                        new_bundle =
                             bundle.hands.clone(),
                             bundle.deck.clone(),
                             bundle.dealer,
@@ -1037,7 +1121,7 @@ pub fn update_and_render(
                             }
 
                             next_bundle!(
-                                new_bundle = 
+                                new_bundle =
                                     bundle.hands.clone(),
                                     bundle.deck.clone(),
                                     bundle.dealer,
@@ -1057,7 +1141,7 @@ pub fn update_and_render(
                             }
 
                             next_bundle!(
-                                new_bundle = 
+                                new_bundle =
                                     bundle.hands.clone(),
                                     bundle.deck.clone(),
                                     bundle.dealer,
@@ -1223,7 +1307,7 @@ pub fn update_and_render(
                         &mut player_text[7..],
                         "{i}",
                     );
-        
+
                     group.commands.print_chars(
                         &player_text,
                         COMMUNITY_BASE_X - (pre_nul_len(&player_text) * gfx::CHAR_ADVANCE),
@@ -1254,11 +1338,33 @@ pub fn update_and_render(
                 }
             }
 
-            //if do_button() {
-                //for award in awards {
-                    //
-                //}
-            //}
+            let w = unscaled::W(50);
+            let h = unscaled::H(20);
+
+            if do_button(
+                group,
+                ButtonSpec {
+                    id: ShowdownSubmit,
+                    rect: unscaled::Rect {
+                        x: unscaled::X(0) + ((command::WIDTH_W/2) - (w/2)),
+                        y: unscaled::Y(0) + (command::HEIGHT_H - (h + SPACING_H)),
+                        w,
+                        h,
+                    },
+                    text: b"submit",
+                }
+            ) {
+                for (i, pots) in awards.iter().enumerate() {
+                    for Award{ amount, .. } in pots {
+                        state.table.moneys[i] += amount;
+                    }
+                }
+
+                // TODO fill out AwardNow cases by awarding and calling this
+                finish_round!();
+            } else {
+                group.ctx.set_next_hot(ShowdownSubmit);
+            }
         },
     }
 }
