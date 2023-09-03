@@ -50,7 +50,7 @@ impl Default for HoldemState {
 
 type Personality = Option<CpuPersonality>;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 struct CpuPersonality {
     // TODO
 }
@@ -833,8 +833,20 @@ pub fn update_and_render(
 
     macro_rules! finish_round {
         () => {
-            // TOD0 option to skip watching remaining players if they are all
+            // TODO option to skip watching remaining players if they are all
             // CPUs
+
+            #[cfg(debug_assertions)]
+            let expected_user_count = {
+                state.table.moneys
+                    .iter()
+                    .zip(
+                        state.table.personalities
+                            .iter()
+                    )
+                    .filter(|(&m, p)| m > 0 && p.is_none())
+                    .count()
+            };
 
             // Condense players down
             {
@@ -869,6 +881,19 @@ pub fn update_and_render(
                 }
             }
 
+            debug_assert_eq!(
+                state.table.moneys
+                    .iter()
+                    .zip(
+                        state.table.personalities
+                            .iter()
+                    )
+                    .filter(|(&m, p)| m > 0 && p.is_none())
+                    .count(),
+                expected_user_count,
+                "After condensing personalities user count did not match expected_user_count!"
+            );
+
             let remaining_player_count = {
                 let mut remaining_player_count = 0;
 
@@ -884,7 +909,6 @@ pub fn update_and_render(
             };
 
             debug_assert!(remaining_player_count > 0);
-            dbg!(remaining_player_count);
 
             match HandLen::try_from(remaining_player_count){
                 Ok(player_count) => {
@@ -911,6 +935,16 @@ pub fn update_and_render(
                     state.table.state = <_>::default();
                 },
             };
+        }
+    }
+
+    macro_rules! award_now {
+        ($hand_index: ident , $pot: expr) => {
+            let i = usize::from($hand_index);
+            state.table.moneys[i] = state.table.moneys[i]
+                .saturating_add($pot.total());
+
+            finish_round!();
         }
     }
 
@@ -996,6 +1030,7 @@ pub fn update_and_render(
                     state.table.moneys[i] = *starting_money;
                 }
 
+                state.table.personalities[0] = None;
                 // TODO Make each element of this array user selectable too.
                 // Start at 1 to make the first player user controlled
                 for i in 1..player_count.usize() {
@@ -1094,7 +1129,9 @@ pub fn update_and_render(
                         community_cards
                     };
                 },
-                _ => { dbg!(outcome); },
+                RoundOutcome::AwardNow(hand_index) => {
+                    award_now!(hand_index, bundle.pot);
+                },
             }
         },
         PostFlop { bundle, community_cards } => {
@@ -1166,7 +1203,9 @@ pub fn update_and_render(
                         }
                     }
                 },
-                _ => { dbg!(outcome); },
+                RoundOutcome::AwardNow(hand_index) => {
+                    award_now!(hand_index, bundle.pot);
+                },
             }
         },
         Showdown { bundle, full_board } => {
@@ -1198,6 +1237,14 @@ pub fn update_and_render(
             type Awards = PerPlayer<[Award; MAX_POTS as usize]>;
 
             let awards: Awards = {
+                debug_assert_eq!(
+                    bundle.pot.eligibilities(&state.table.moneys)
+                            .map(|(_, n)| n)
+                            .sum::<Money>(),
+                    bundle.pot.total(),
+                    "Eligibilities did not match pot total!"
+                );
+
                 let mut awards = Awards::default();
 
                 for (eligibile_players, amount) in bundle.pot.eligibilities(&state.table.moneys) {
@@ -1252,7 +1299,7 @@ pub fn update_and_render(
                             award_amounts[i] = award_amounts[i].saturating_add(min_money_unit.get());
 
                             i += 1;
-                            if i >= usize::from(MAX_PLAYERS) {
+                            if i >= usize::from(winner_count) {
                                 i = 0;
                             }
                         }
@@ -1276,6 +1323,22 @@ pub fn update_and_render(
                         }
                     }
                 }
+
+                debug_assert_eq!(
+                    {
+                        let mut total: Money = 0;
+
+                        for award_array in awards.iter() {
+                            for Award { amount, .. } in award_array {
+                                total = total.saturating_add(*amount);
+                            }
+                        }
+
+                        total
+                    },
+                    bundle.pot.total(),
+                    "Awarded total did not match pot total!"
+                );
 
                 awards
             };
@@ -1356,11 +1419,10 @@ pub fn update_and_render(
             ) {
                 for (i, pots) in awards.iter().enumerate() {
                     for Award{ amount, .. } in pots {
-                        state.table.moneys[i] += amount;
+                        state.table.moneys[i] = state.table.moneys[i].saturating_add(*amount);
                     }
                 }
 
-                // TODO fill out AwardNow cases by awarding and calling this
                 finish_round!();
             } else {
                 group.ctx.set_next_hot(ShowdownSubmit);

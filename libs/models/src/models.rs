@@ -506,7 +506,6 @@ pub mod holdem {
                 // TODO? avoid this seemingly extra loop?
                 let mut unfolded_count = 0;
                 let mut last_unfolded_index = 0;
-                let mut index = 0;
 
                 for index in 0..MAX_HAND_INDEX {
                     let i = usize::from(index);
@@ -531,6 +530,12 @@ pub mod holdem {
             } else {
                 Undetermined
             }
+        }
+
+        pub fn total(&self) -> Money {
+            self.amounts()
+                .iter()
+                .sum()
         }
 
         pub fn call_amount(&self) -> Money {
