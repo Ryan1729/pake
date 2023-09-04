@@ -296,7 +296,7 @@ pub fn update_and_render(
     let min_money_unit: NonZeroMoney = NonZeroMoney::MIN.saturating_add(5 - 1);
 
     macro_rules! do_holdem_hands {
-        ($group: ident $(,)? $bundle: ident) => ({
+        ($group: ident $(,)? $bundle: ident , $community_opt: expr) => ({
             let group = $group;
             let hands = &$bundle.hands;
             let dealer = $bundle.dealer;
@@ -543,15 +543,73 @@ pub fn update_and_render(
             // TODO disallow folding against a bet of 0 more.
             let action_opt = match &state.table.personalities[current_i] {
                 Some(_personality) => {
-                    // TODO Base choice off of personality
-                    Some(gen_action(
-                        &mut state.rng,
-                        ActionSpec {
-                            one_past_max_money: NonZeroMoney::MIN.saturating_add(state.table.moneys[current_i]),
-                            min_money_unit,
-                            call_amount,
+                    let action = match $community_opt {
+                        None => {
+                            gen_action(
+                                &mut state.rng,
+                                ActionSpec {
+                                    one_past_max_money: NonZeroMoney::MIN.saturating_add(state.table.moneys[current_i]),
+                                    min_money_unit,
+                                    call_amount,
+                                }
+                            )
+                        },
+                        Some(community_cards) => {
+                            // TODO Base choice off of personality
+                            let hand = hands.get(current)
+                                .map(|&h| h)
+                                .unwrap_or_default();
+
+                            let own_eval = evaluate::holdem_hand(
+                                community_cards,
+                                hand,
+                            );
+
+                            // TODO make this all the possible hands
+                            const ALL_HANDS: [Hand; 0] = [];
+
+                            let mut other_hands = ALL_HANDS.iter()
+                                .filter(|h| {
+                                    h[0] != hand[0]
+                                    && h[0] != hand[1]
+                                    && h[1] != hand[0]
+                                    && h[1] != hand[1]
+                                });
+
+                            let mut below_count = 0;
+                            let mut equal_count = 0;
+                            let mut above_count = 0;
+
+                            for other_hand in other_hands {
+                                use core::cmp::Ordering::*;
+                                let other_eval = evaluate::holdem_hand(
+                                    community_cards,
+                                    *other_hand,
+                                );
+
+                                match own_eval.cmp(&other_eval) {
+                                    Less => {
+                                        below_count += 1;
+                                    },
+                                    Equal => {
+                                        equal_count += 1;
+                                    },
+                                    Greater => {
+                                        below_count += 1;
+                                    },
+                                }
+                            }
+
+                            if below_count > (equal_count + above_count) {
+                                // TODO raise sometimes
+                                Action::Call
+                            } else {
+                                Action::Fold
+                            }
                         }
-                    ))
+                    };
+
+                    Some(action)
                 },
                 None => {
                     match group.ctx.hot {
@@ -1108,7 +1166,7 @@ pub fn update_and_render(
         },
         PreFlop { bundle } => {
             let group = new_group!();
-            let outcome = do_holdem_hands!(group, bundle);
+            let outcome = do_holdem_hands!(group, bundle, None);
 
             match outcome {
                 RoundOutcome::Undetermined => {},
@@ -1143,7 +1201,7 @@ pub fn update_and_render(
                 COMMUNITY_BASE_Y,
             );
 
-            let outcome = do_holdem_hands!(group, bundle);
+            let outcome = do_holdem_hands!(group, bundle, Some(*community_cards));
 
             match outcome {
                 RoundOutcome::Undetermined => {},
