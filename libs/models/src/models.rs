@@ -15,6 +15,18 @@ pub const DECK_SIZE: u8 = RANK_COUNT * SUIT_COUNT;
 
 pub type Card = u8;
 
+pub const ALL_CARDS: [Card; DECK_SIZE as usize] = {
+    let mut all_cards = [0; DECK_SIZE as usize];
+
+    let mut c = 0;
+    while c < DECK_SIZE {
+        all_cards[c as usize] = c;
+        c += 1;
+    }
+
+    all_cards
+};
+
 #[cfg(any())]
 pub fn gen_card(rng: &mut Xs) -> Card {
     xs::range(rng, 0..DECK_SIZE as _) as Card
@@ -168,7 +180,7 @@ pub mod holdem {
         }
 
         pub fn iter(self) -> PerPlayerBitsetIter {
-            PerPlayerBitsetIter { 
+            PerPlayerBitsetIter {
                 set: self,
                 index: 0,
             }
@@ -565,7 +577,7 @@ pub mod holdem {
 
                     let mut min_all_in = Money::MAX;
                     for i in 0..amounts.len() {
-                        // A player is all in if they have 0 money left, 
+                        // A player is all in if they have 0 money left,
                         // and actually bet something.
                         if current_money[i] == 0 {
                             if amounts[i] > 0 && amounts[i] < min_all_in {
@@ -592,7 +604,7 @@ pub mod holdem {
                             }
                         }
                     }
-                    
+
                     if contributors.len() > 0 && output != 0 {
                         return Some((contributors, output))
                     }
@@ -858,7 +870,7 @@ pub mod holdem {
             a!([fold(), fold(), all_in(300)], AwardNow(2));
         }
     }
-    
+
 
     pub fn deal(
         rng: &mut Xs,
@@ -975,6 +987,28 @@ pub mod holdem {
     impl Default for CommunityCards {
         fn default() -> Self {
             Self::Flop(<_>::default())
+        }
+    }
+
+    impl CommunityCards {
+        pub fn contains(&self, card: Card) -> bool {
+            match *self {
+                Self::Flop([c1, c2, c3]) =>
+                    c1 == card
+                    || c2 == card
+                    || c3 == card,
+                Self::Turn([c1, c2, c3], c4) =>
+                    c1 == card
+                    || c2 == card
+                    || c3 == card
+                    || c4 == card,
+                Self::River([c1, c2, c3], c4, c5) =>
+                    c1 == card
+                    || c2 == card
+                    || c3 == card
+                    || c4 == card
+                    || c5 == card,
+            }
         }
     }
 
