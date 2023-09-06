@@ -541,8 +541,9 @@ pub fn update_and_render(
             }
 
             // TODO disallow folding against a bet of 0 more.
-            let action_opt = match &state.table.personalities[current_i] {
-                Some(_personality) => {
+            let action_opt = match (pot.has_folded(current), &state.table.personalities[current_i]) {
+                (true, _) => Some(Action::Fold),
+                (false, Some(_personality)) => {
                     let action = match $community_opt {
                         None => {
                             gen_action(
@@ -640,7 +641,7 @@ pub fn update_and_render(
 
                     Some(action)
                 },
-                None => {
+                (false, None) => {
                     match group.ctx.hot {
                         HoldemMenu(menu_id) => {
                             const MENU_H: unscaled::H = unscaled::h_const_div(
