@@ -71,6 +71,8 @@ pub struct State {
 
 impl State {
     pub fn new(seed: Seed) -> State {
+        // 22 Players, User dealt a pair of 8s, beaten by a 8-high straight.
+        //let seed = [177, 142, 173, 15, 242, 60, 217, 65, 49, 80, 175, 162, 108, 73, 4, 62];
         let mut rng = xs::from_seed(seed);
 
         State {
@@ -258,6 +260,19 @@ pub fn update_and_render(
 
     const COMMUNITY_BASE_X: unscaled::X = unscaled::X(150);
     const COMMUNITY_BASE_Y: unscaled::Y = unscaled::Y(150);
+
+    macro_rules! stack_eval_text {
+        ($text:ident = $eval: expr) => {
+            let mut eval_text = [0 as u8; 64];
+            let _cant_actually_fail = write!(
+                &mut eval_text[..],
+                "{}",
+                $eval
+            );
+
+            let $text = eval_text;
+        }
+    }
 
     macro_rules! stack_money_text {
         ($text:ident = $money: expr) => {
@@ -1468,7 +1483,7 @@ pub fn update_and_render(
 
                     y += gfx::CHAR_LINE_ADVANCE;
 
-                    for Award { amount, .. } in award_array {
+                    for Award { amount, eval } in award_array {
                         if *amount == 0 {
                             break
                         }
@@ -1478,6 +1493,15 @@ pub fn update_and_render(
                         group.commands.print_chars(
                             &amount_text,
                             COMMUNITY_BASE_X - (pre_nul_len(&amount_text) * gfx::CHAR_ADVANCE),
+                            y,
+                            6
+                        );
+
+                        stack_eval_text!(eval_text = eval);
+
+                        group.commands.print_chars(
+                            &eval_text ,
+                            COMMUNITY_BASE_X + gfx::CHAR_ADVANCE,
                             y,
                             6
                         );
