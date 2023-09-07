@@ -121,23 +121,49 @@ pub mod holdem {
                 Raise => b"raise",
             }
         }
+    }
 
-        pub fn next_up(self) -> Self {
+    #[derive(Copy, Clone, Debug, Default, Eq, PartialEq)]
+    pub enum AllowedKindMode {
+        #[default]
+        All,
+        NoFolding,
+    }
+
+    impl ActionKind {
+        pub fn next_up(self, mode: AllowedKindMode) -> Self {
             use ActionKind::*;
-            match self {
-                Fold => Call,
-                Call => Raise,
-                Raise => Fold,
+            use AllowedKindMode::*;
+            match mode {
+                All => match self {
+                    Fold => Call,
+                    Call => Raise,
+                    Raise => Fold,
+                },
+                NoFolding => match self {
+                    Fold => Call,
+                    Call => Raise,
+                    Raise => Call,
+                },
             }
         }
 
-        pub fn next_down(self) -> Self {
+        pub fn next_down(self, mode: AllowedKindMode) -> Self {
             use ActionKind::*;
-            match self {
-                Fold => Raise,
-                Call => Fold,
-                Raise => Call,
+            use AllowedKindMode::*;
+            match mode {
+                All => match self {
+                    Fold => Raise,
+                    Call => Fold,
+                    Raise => Call,
+                },
+                NoFolding => match self {
+                    Fold => Raise,
+                    Call => Raise,
+                    Raise => Call,
+                },
             }
+            
         }
     }
 
@@ -550,6 +576,8 @@ pub mod holdem {
                 .sum()
         }
 
+        /// Returns the total that a player must have bet, in order to call 
+        /// including previous bets. That is, the maxiumum amount bet by any player.
         pub fn call_amount(&self) -> Money {
             self.amounts()
                 .iter()

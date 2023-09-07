@@ -1,7 +1,7 @@
 #![allow(unused_imports)]
 
 use gfx::{SPACING_H, SPACING_W, Commands, Highlighting::{Highlighted, Plain}};
-use models::{Card, ALL_CARDS, Money, NonZeroMoney, holdem::{MAX_PLAYERS, MAX_POTS, Action, ActionKind, ActionSpec, CommunityCards, Deck, Facing, FullBoard, Hand, HandIndex, HandLen, Hands, PerPlayer, Pot, PotAction, RoundOutcome, gen_action, gen_deck, gen_hand_index}};
+use models::{Card, ALL_CARDS, Money, NonZeroMoney, holdem::{MAX_PLAYERS, MAX_POTS, Action, ActionKind, ActionSpec, AllowedKindMode, CommunityCards, Deck, Facing, FullBoard, Hand, HandIndex, HandLen, Hands, PerPlayer, Pot, PotAction, RoundOutcome, gen_action, gen_deck, gen_hand_index}};
 use platform_types::{Button, Dir, Input, PaletteIndex, Speaker, SFX, command, unscaled};
 use xs::{Xs, Seed};
 
@@ -547,6 +547,9 @@ pub fn update_and_render(
 
             let call_amount = pot.call_amount();
             let minimum_raise_total = call_amount + min_money_unit.get();
+            let call_remainder = call_amount.saturating_sub(
+                pot.amount_for(current)
+            );
 
             if $bundle.selection.bet < minimum_raise_total {
                 $bundle.selection.bet = minimum_raise_total;
@@ -555,11 +558,13 @@ pub fn update_and_render(
                 $bundle.selection.bet = state.table.moneys[current_i];
             }
 
-            // TODO disallow folding against a bet of 0 more.
-            let action_opt = match (pot.has_folded(current), &state.table.personalities[current_i]) {
+            let action_opt = match (
+                pot.has_folded(current),
+                &state.table.personalities[current_i]
+            ) {
                 (true, _) => Some(Action::Fold),
                 (false, Some(_personality)) => {
-                    let action = match $community_opt {
+                    let mut action = match $community_opt {
                         None => {
                             gen_action(
                                 &mut state.rng,
@@ -654,6 +659,12 @@ pub fn update_and_render(
                         }
                     };
 
+                    if let Action::Fold = action {
+                        if call_remainder == 0 {
+                            action = Action::Call;
+                        }
+                    }
+
                     Some(action)
                 },
                 (false, None) => {
@@ -744,9 +755,6 @@ pub fn update_and_render(
                                         );
                                     }
                                     ActionKind::Call => {
-                                        let call_remainder = call_amount.saturating_sub(
-                                            pot.amount_for(current)
-                                        );
                                         draw_money_in_rect!(group, call_remainder, money_rect);
                                     }
                                     ActionKind::Fold => {}
@@ -808,14 +816,17 @@ pub fn update_and_render(
 
                                 group.ctx.set_next_hot(HoldemMenu(new_id));
                             } else {
-                                // TODO don't allow selecting kinds if they cannot
-                                // correctly be selected.
+                                let mode = if call_remainder > 0 {
+                                    AllowedKindMode::All
+                                } else {
+                                    AllowedKindMode::NoFolding
+                                };
                                 match menu_id {
                                     ACTION_KIND => {
                                         if group.input.pressed_this_frame(Button::UP) {
-                                            $bundle.selection.action_kind = $bundle.selection.action_kind.next_up();
+                                            $bundle.selection.action_kind = $bundle.selection.action_kind.next_up(mode);
                                         } else if group.input.pressed_this_frame(Button::DOWN) {
-                                            $bundle.selection.action_kind = $bundle.selection.action_kind.next_down();
+                                            $bundle.selection.action_kind = $bundle.selection.action_kind.next_down(mode);
                                         }
                                     }
                                     MONEY_AMOUNT => {
