@@ -128,6 +128,7 @@ pub mod holdem {
         #[default]
         All,
         NoFolding,
+        AllIn,
     }
 
     impl ActionKind {
@@ -145,6 +146,7 @@ pub mod holdem {
                     Call => Raise,
                     Raise => Call,
                 },
+                AllIn => Call,
             }
         }
 
@@ -162,6 +164,7 @@ pub mod holdem {
                     Call => Raise,
                     Raise => Call,
                 },
+                AllIn => Call,
             }
             
         }

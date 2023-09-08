@@ -73,6 +73,8 @@ impl State {
     pub fn new(seed: Seed) -> State {
         // 22 Players, User dealt a pair of 8s, beaten by a 8-high straight.
         //let seed = [177, 142, 173, 15, 242, 60, 217, 65, 49, 80, 175, 162, 108, 73, 4, 62];
+        // 22 Players, User dealt a pair of Aces, wins with Aces over Queens.
+        // let seed = [148, 99, 192, 160, 91, 61, 217, 65, 108, 157, 212, 200, 23, 73, 4, 62];
         let mut rng = xs::from_seed(seed);
 
         State {
@@ -413,6 +415,26 @@ pub fn update_and_render(
                 }
             }
 
+            // The total bet needed to call
+            let call_amount = pot.call_amount();
+            let minimum_raise_total = call_amount + min_money_unit.get();
+            // The amount extra needed to call
+            let call_remainder = call_amount.saturating_sub(
+                pot.amount_for(current)
+            );
+            // The amount that would be leftover if the player was to call
+            let call_leftover = state.table.moneys[current_i]
+                .checked_sub(call_remainder);
+
+            let allowed_kind_mode = 
+                if call_remainder > 0 {
+                    AllowedKindMode::All
+                } else if call_leftover.unwrap_or(0) > 0 {
+                    AllowedKindMode::NoFolding
+                } else {
+                    AllowedKindMode::AllIn
+                };
+
             const ACTION_KIND: ui::HoldemMenuId = 0;
             const MONEY_AMOUNT: ui::HoldemMenuId = 1;
             const SUBMIT: ui::HoldemMenuId = 2;
@@ -491,6 +513,12 @@ pub fn update_and_render(
                             }
                             group.ctx.set_next_hot(HoldemHand(index));
                         } if group.input.pressed_this_frame(Button::A) {
+                            $bundle.selection.action_kind = match (allowed_kind_mode, $bundle.selection.action_kind) {
+                                (AllowedKindMode::NoFolding, ActionKind::Fold) => ActionKind::Call,
+                                (AllowedKindMode::All, action_kind)
+                                | (AllowedKindMode::NoFolding, action_kind) => action_kind,
+                                (AllowedKindMode::AllIn, _) => ActionKind::Call,
+                            };
                             group.ctx.set_next_hot(HoldemMenu(ACTION_KIND));
                         } else {
                             group.ctx.set_next_hot(HoldemHand(index));
@@ -544,12 +572,6 @@ pub fn update_and_render(
                 // TODO confirm this looks okay with the maximum number of amounts
                 // which would be some function of MAX_PLAYERS. Exactly MAX_PLAYERS?
             }
-
-            let call_amount = pot.call_amount();
-            let minimum_raise_total = call_amount + min_money_unit.get();
-            let call_remainder = call_amount.saturating_sub(
-                pot.amount_for(current)
-            );
 
             if $bundle.selection.bet < minimum_raise_total {
                 $bundle.selection.bet = minimum_raise_total;
@@ -733,11 +755,15 @@ pub fn update_and_render(
                                     );
                                 }
 
-                                ui::draw_quick_select(
-                                    group,
-                                    action_kind_rect,
-                                    HoldemMenu(ACTION_KIND),
-                                );
+                                if allowed_kind_mode != AllowedKindMode::AllIn {
+                                    ui::draw_quick_select(
+                                        group,
+                                        action_kind_rect,
+                                        HoldemMenu(ACTION_KIND),
+                                    );
+                                } else {
+                                    group.ctx.set_next_hot(HoldemMenu(SUBMIT));
+                                }
 
                                 let money_rect = unscaled::Rect {
                                     x: action_kind_rect.x + action_kind_rect.w,
@@ -755,7 +781,25 @@ pub fn update_and_render(
                                         );
                                     }
                                     ActionKind::Call => {
-                                        draw_money_in_rect!(group, call_remainder, money_rect);
+                                        match allowed_kind_mode {
+                                            AllowedKindMode::All
+                                            | AllowedKindMode::NoFolding => {
+                                                draw_money_in_rect!(group, call_remainder, money_rect);
+                                            },
+                                            AllowedKindMode::AllIn => {
+                                                let label = b"all-in";
+                                                let xy = gfx::center_line_in_rect(
+                                                    label.len() as _,
+                                                    money_rect,
+                                                );
+                                                group.commands.print_chars(
+                                                    label,
+                                                    xy.x,
+                                                    xy.y,
+                                                    6
+                                                );
+                                            }
+                                        }
                                     }
                                     ActionKind::Fold => {}
                                 }
@@ -816,17 +860,12 @@ pub fn update_and_render(
 
                                 group.ctx.set_next_hot(HoldemMenu(new_id));
                             } else {
-                                let mode = if call_remainder > 0 {
-                                    AllowedKindMode::All
-                                } else {
-                                    AllowedKindMode::NoFolding
-                                };
                                 match menu_id {
                                     ACTION_KIND => {
                                         if group.input.pressed_this_frame(Button::UP) {
-                                            $bundle.selection.action_kind = $bundle.selection.action_kind.next_up(mode);
+                                            $bundle.selection.action_kind = $bundle.selection.action_kind.next_up(allowed_kind_mode);
                                         } else if group.input.pressed_this_frame(Button::DOWN) {
-                                            $bundle.selection.action_kind = $bundle.selection.action_kind.next_down(mode);
+                                            $bundle.selection.action_kind = $bundle.selection.action_kind.next_down(allowed_kind_mode);
                                         }
                                     }
                                     MONEY_AMOUNT => {
@@ -853,13 +892,10 @@ pub fn update_and_render(
                 let bet = match action {
                     Action::Fold => PotAction::Fold,
                     Action::Call => {
-                        match
-                            state.table.moneys[current_i]
-                            .checked_sub(call_amount)
-                        {
+                        match call_leftover {
                             Some(new_amount) => {
                                 state.table.moneys[current_i] = new_amount;
-                                PotAction::Bet(call_amount)
+                                PotAction::Bet(call_remainder)
                             },
                             None => {
                                 let action = PotAction::Bet(
