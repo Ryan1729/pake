@@ -1,8 +1,10 @@
 #![allow(unused_imports)]
 
 use gfx::{SPACING_H, SPACING_W, Commands, Highlighting::{Highlighted, Plain}};
+use look_up::{holdem::{hand_win_probability}, probability::{FIFTY_PERCENT, SEVENTY_FIVE_PERCENT}};
 use models::{Card, ALL_CARDS, Money, NonZeroMoney, holdem::{MAX_PLAYERS, MAX_POTS, Action, ActionKind, ActionSpec, AllowedKindMode, CommunityCards, Deck, Facing, FullBoard, Hand, HandIndex, HandLen, Hands, PerPlayer, Pot, PotAction, RoundOutcome, gen_action, gen_deck, gen_hand_index}};
 use platform_types::{Button, Dir, Input, PaletteIndex, Speaker, SFX, command, unscaled};
+
 use xs::{Xs, Seed};
 
 use std::io::Write;
@@ -311,6 +313,8 @@ pub fn update_and_render(
 
     const TEXT: PaletteIndex = 6;
     let min_money_unit: NonZeroMoney = NonZeroMoney::MIN.saturating_add(5 - 1);
+    let small_blind_amount: NonZeroMoney = min_money_unit;
+    let large_blind_amount: NonZeroMoney = small_blind_amount.saturating_add(min_money_unit.get());
 
     macro_rules! do_holdem_hands {
         ($group: ident $(,)? $bundle: ident , $community_opt: expr) => ({
@@ -586,23 +590,37 @@ pub fn update_and_render(
             ) {
                 (true, _) => Some(Action::Fold),
                 (false, Some(_personality)) => {
-                    let mut action = match $community_opt {
-                        None => {
-                            gen_action(
-                                &mut state.rng,
-                                ActionSpec {
-                                    one_past_max_money: NonZeroMoney::MIN.saturating_add(state.table.moneys[current_i]),
-                                    min_money_unit,
-                                    call_amount,
-                                }
-                            )
-                        },
-                        Some(community_cards) => {
-                            // TODO Base choice off of personality
-                            let hand = hands.get(current)
+                    // TODO Base choice of action off of personality
+
+                    let hand = hands.get(current)
                                 .map(|&h| h)
                                 .unwrap_or_default();
 
+                    let mut action = match $community_opt {
+                        None => {
+                            let probability = hand_win_probability(hand);
+                            if probability >= SEVENTY_FIVE_PERCENT {
+                                let multiple = Money::from(xs::range(&mut state.rng, 3..6));
+                                Action::Raise(large_blind_amount.get().saturating_mul(multiple))
+                            } else if probability >= FIFTY_PERCENT {
+                                if xs::range(&mut state.rng, 0..5) == 0 {
+                                    // Don't be perfectly predictable!
+                                    gen_action(
+                                        &mut state.rng,
+                                        ActionSpec {
+                                            one_past_max_money: NonZeroMoney::MIN.saturating_add(state.table.moneys[current_i]),
+                                            min_money_unit,
+                                            call_amount,
+                                        }
+                                    )
+                                } else {
+                                    Action::Call
+                                }
+                            } else {
+                                Action::Fold
+                            }
+                        },
+                        Some(community_cards) => {
                             let own_eval = evaluate::holdem_hand(
                                 community_cards,
                                 hand,
@@ -1107,8 +1125,6 @@ pub fn update_and_render(
             let dealer = $dealer;
             let pot = &mut $pot;
 
-            let large_blind_amount = 10;
-            let small_blind_amount = 5;
             {
                 let mut index = dealer;
                 if player_count == HandLen::Two {
@@ -1123,8 +1139,8 @@ pub fn update_and_render(
                 };
 
                 let (new_total, subbed) =
-                    match state.table.moneys[usize::from(index)].checked_sub(small_blind_amount) {
-                        Some(difference) => (difference, small_blind_amount),
+                    match state.table.moneys[usize::from(index)].checked_sub(small_blind_amount.get()) {
+                        Some(difference) => (difference, small_blind_amount.get()),
                         None => (0, state.table.moneys[usize::from(index)]),
                     };
                 state.table.moneys[usize::from(index)] = new_total;
@@ -1136,8 +1152,8 @@ pub fn update_and_render(
                 }
 
                 let (new_total, subbed) =
-                    match state.table.moneys[usize::from(index)].checked_sub(large_blind_amount) {
-                        Some(difference) => (difference, large_blind_amount),
+                    match state.table.moneys[usize::from(index)].checked_sub(large_blind_amount.get()) {
+                        Some(difference) => (difference, large_blind_amount.get()),
                         None => (0, state.table.moneys[usize::from(index)]),
                     };
                 state.table.moneys[usize::from(index)] = new_total;

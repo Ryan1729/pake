@@ -1,0 +1,12 @@
+[package]
+name = "look_up"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+path = "src/look_up.rs"
+
+[dependencies]
+
+[dependencies.models]
+path = "../models"
