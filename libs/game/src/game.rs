@@ -1,7 +1,7 @@
 #![allow(unused_imports)]
 
 use gfx::{SPACING_H, SPACING_W, Commands, Highlighting::{Highlighted, Plain}};
-use look_up::{holdem::{hand_win_probability}, probability::{FIFTY_PERCENT, SEVENTY_FIVE_PERCENT}};
+use look_up::{holdem::{ALL_SORTED_HANDS, hand_win_probability}, probability::{FIFTY_PERCENT, SEVENTY_FIVE_PERCENT}};
 use models::{Card, ALL_CARDS, Money, NonZeroMoney, holdem::{MAX_PLAYERS, MAX_POTS, Action, ActionKind, ActionSpec, AllowedKindMode, CommunityCards, Deck, Facing, FullBoard, Hand, HandIndex, HandLen, Hands, PerPlayer, Pot, PotAction, RoundOutcome, gen_action, gen_deck, gen_hand_index}};
 use platform_types::{Button, Dir, Input, PaletteIndex, Speaker, SFX, command, unscaled};
 
@@ -625,33 +625,6 @@ pub fn update_and_render(
                                 community_cards,
                                 hand,
                             );
-
-                            const ALL_SORTED_HANDS_LEN: usize = 1326;
-                            const ALL_SORTED_HANDS: [Hand; ALL_SORTED_HANDS_LEN] = {
-                                let mut all_hands = [[0; 2]; ALL_SORTED_HANDS_LEN];
-
-                                let mut index = 0;
-
-                                let mut i1 = 0;
-                                while i1 < ALL_CARDS.len() {
-                                    let mut i2 = i1;
-                                    while i2 < ALL_CARDS.len() {
-                                        let c1 = ALL_CARDS[i1];
-                                        let c2 = ALL_CARDS[i2];
-                                        i2 += 1;
-
-                                        if c1 == c2 {
-                                            continue
-                                        }
-
-                                        all_hands[index] = [c1, c2];
-                                        index += 1;
-                                    }
-                                    i1 += 1;
-                                }
-
-                                all_hands
-                            };
 
                             let mut other_hands = ALL_SORTED_HANDS.iter()
                                 .filter(|h| {
