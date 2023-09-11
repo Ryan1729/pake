@@ -1,0 +1,14 @@
+[package]
+name = "holdem_gen"
+version = "0.1.0"
+edition = "2021"
+
+[workspace]
+
+[dependencies]
+
+[dependencies.evaluate]
+path = "../../libs/evaluate"
+
+[dependencies.models]
+path = "../../libs/models"

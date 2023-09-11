@@ -1,7 +1,7 @@
 pub mod probability {
     pub type Probability = u8;
-    pub const FIFTY_PERCENT: Probability = 0b1000_000;
-    pub const SEVENTY_FIVE_PERCENT: Probability = 0b1100_000;
+    pub const FIFTY_PERCENT: Probability = 0b1000_0000;
+    pub const SEVENTY_FIVE_PERCENT: Probability = 0b1100_0000;
 }
 
 
@@ -24,7 +24,6 @@ pub mod holdem {
 
                 all_hands[index] = [c1, c2];
                 index += 1;
-
                 i2 += 1;
             }
             i1 += 1;
@@ -33,10 +32,10 @@ pub mod holdem {
         all_hands
     };
 
+    const WIN_PROBABILITY: [Probability; ALL_SORTED_HANDS_LEN] = include!("holdem_win_probability.in");
+
     pub fn hand_win_probability(hand: Hand) -> Probability {
-        // TODO index into a pre-generated look up table, instead of this incorrect 
-        // placeholder.
-        FIFTY_PERCENT
+        WIN_PROBABILITY[hand_to_sorted_hand_index(hand)]
     }
 
     fn hand_to_sorted_hand_index(hand: Hand) -> usize {
