@@ -82,7 +82,7 @@ fn probability_for_hand(hand: Hand) -> Probability {
     FIFTY_PERCENT
 }
 
-type Count = u64;
+type Count = u32;
 
 #[derive(Clone, Copy)]
 struct EvalCount {
@@ -92,8 +92,10 @@ struct EvalCount {
 
 impl EvalCount {
     fn probability(self) -> Probability {
-        //assert!(self.total > 0);
-        FIFTY_PERCENT
+        assert!(self.total > 0);
+        let frac = f64::from(self.win_count) / f64::from(self.total);
+
+        ((frac * 256.) + 0.5) as Probability
     }
 }
 
@@ -115,6 +117,9 @@ fn probability_works_in_these_cases() {
     a!(0, 1 => 0);
     a!(1, 2 => FIFTY_PERCENT);
     a!(3, 4 => SEVENTY_FIVE_PERCENT);
+    for x in 0..256 {
+        a!(x, 256 => u8::try_from(x).unwrap());
+    }
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -135,6 +140,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         };
         ALL_SORTED_HANDS_LEN
     ];
+
+    // TODO remove the need for this
+    for count in eval_counts.iter_mut() {
+        count.win_count = 1;
+        count.total = 2;
+    }
 
     write!(file, "[")?;
 
