@@ -12,3 +12,6 @@ path = "../../libs/evaluate"
 
 [dependencies.models]
 path = "../../libs/models"
+
+[dependencies.xs]
+path = "../../libs/xs"

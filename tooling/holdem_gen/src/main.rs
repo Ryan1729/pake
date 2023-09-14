@@ -1,4 +1,4 @@
-use models::{Card, holdem::{Hand}};
+use models::{ALL_CARDS, Card, holdem::{CommunityCards, Hand}};
 
 use std::fs::OpenOptions;
 
@@ -15,9 +15,9 @@ mod look_up {
     pub mod holdem {
         use models::{ALL_CARDS, holdem::{Hand}};
 
-        pub const ALL_SORTED_HANDS_LEN: usize = 1326;
-        pub const ALL_SORTED_HANDS: [Hand; ALL_SORTED_HANDS_LEN] = {
-            let mut all_hands = [[0; 2]; ALL_SORTED_HANDS_LEN];
+        pub const ALL_SORTED_HANDS_LEN: u32 = 1326;
+        pub const ALL_SORTED_HANDS: [Hand; ALL_SORTED_HANDS_LEN as usize] = {
+            let mut all_hands = [[0; 2]; ALL_SORTED_HANDS_LEN as usize];
 
             let mut index = 0;
 
@@ -37,6 +37,22 @@ mod look_up {
 
             all_hands
         };
+
+        fn hand_to_sorted_hand_index(hand: Hand) -> usize {
+            let sorted_hand = if hand[0] > hand[1] {
+                [hand[1], hand[0]]
+            } else {
+                hand
+            };
+    
+            let s0 = usize::from(sorted_hand[0]);
+            let s1 = usize::from(sorted_hand[1]);
+            let deck_size = usize::from(DECK_SIZE);
+    
+            // TODO? Simplify this formula which was derived through trial and error?
+            // Or maybe figure out why it works?
+            s0 * (2 * deck_size - s0 - 3)/2 + s1 - 1
+        }
     }
 }
 
@@ -44,42 +60,48 @@ use look_up::{
     holdem::{
         ALL_SORTED_HANDS_LEN,
         ALL_SORTED_HANDS,
+        hand_to_sorted_hand_index,
     },
     probability::{Probability, FIFTY_PERCENT},
 };
 
 type Flop = [Card; 3];
 
-fn probability_for_hand(hand: Hand) -> Probability {
-    //const ALL_SORTED_FLOPS_LEN: usize = 380204032;
-    //const ALL_SORTED_FLOPS: [Hand; ALL_SORTED_FLOPS_LEN] = {
-        //let mut all_flops = [[0; 3]; ALL_SORTED_FLOPS_LEN];
-    //
-        //let mut index = 0;
-    //
-        //let mut i1 = 0;
-        //while i1 < ALL_CARDS.len() {
-            //let mut i2 = i1 + 1;
-            //while i2 < ALL_CARDS.len() {
-                //let mut i3 = i1 + 1;
-                //while i3 < ALL_CARDS.len() {
-                    //let c1 = ALL_CARDS[i1];
-                    //let c2 = ALL_CARDS[i2];
-                    //let c3 = ALL_CARDS[i3];
-    //
-                    //all_flops[index] = [c1, c2];
-                    //index += 1;
-                    //i3 += 1;
-                //}
-                //i2 += 1;
-            //}
-            //i1 += 1;
-        //}
-    //
-        //all_flops
-    //};
-//
-    FIFTY_PERCENT
+const ALL_SORTED_FLOPS_LEN: u32 = 380204032;
+
+fn sorted_flop(index: usize) -> Flop {
+    use std::sync::OnceLock;
+    // If this was a const, it takes too much memory to compile. Plus lots of space
+    // on disk for the executable!
+    static ALL_SORTED_FLOPS: OnceLock<Box<[Flop]>> = OnceLock::new(); 
+    let all_sorted_flops = ALL_SORTED_FLOPS.get_or_init(|| {
+        let mut all_flops = vec![[0; 3]; ALL_SORTED_FLOPS_LEN as usize];
+
+        let mut index = 0;
+    
+        let mut i1 = 0;
+        while i1 < ALL_CARDS.len() {
+            let mut i2 = i1 + 1;
+            while i2 < ALL_CARDS.len() {
+                let mut i3 = i1 + 1;
+                while i3 < ALL_CARDS.len() {
+                    let c1 = ALL_CARDS[i1];
+                    let c2 = ALL_CARDS[i2];
+                    let c3 = ALL_CARDS[i3];
+    
+                    all_flops[index] = [c1, c2, c3];
+                    index += 1;
+                    i3 += 1;
+                }
+                i2 += 1;
+            }
+            i1 += 1;
+        }
+    
+        all_flops.into_boxed_slice()
+    });
+
+    all_sorted_flops[index]
 }
 
 type Count = u32;
@@ -122,6 +144,46 @@ fn probability_works_in_these_cases() {
     }
 }
 
+#[inline]
+fn count_evaluation(
+    counts: &mut [EvalCount; ALL_SORTED_HANDS_LEN as usize],
+    hand_i_1: u32,
+    hand_i_2: u32,
+    flop_i: u32,
+) {
+    let hand_i_1 = hand_i_1 as usize;
+    let hand_i_2 = hand_i_2 as usize;
+    let flop_i = flop_i as usize;
+
+    let hand_1 = ALL_SORTED_HANDS[hand_i_1];
+    let hand_2 = ALL_SORTED_HANDS[hand_i_2];
+    let flop = sorted_flop(flop_i);
+
+    let eval_1 = evaluate::holdem_hand(
+        CommunityCards::Flop(flop),
+        hand_1,
+    );
+    let eval_2 = evaluate::holdem_hand(
+        CommunityCards::Flop(flop),
+        hand_2,
+    );
+
+    use core::cmp::Ordering::*;
+    match eval_1.cmp(&eval_2) {
+        Greater => {
+            counts[hand_i_1].win_count += 1;
+        },
+        Equal => {},
+        Less => {
+            counts[hand_i_2].win_count += 1;
+        },
+    }
+
+    counts[hand_i_1].total += 1;
+
+    counts[hand_i_2].total += 1;
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     use std::io::Write;
 
@@ -133,18 +195,58 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .create(false)
         .open(WIN_PROBABILTY_OUTPUT_PATH)?;
 
-    let mut eval_counts: [EvalCount; ALL_SORTED_HANDS_LEN] = [
+    let mut rng = {
+        let seed = {
+            let time = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default();
+            let time = time.as_secs_f64();
+        
+            unsafe {
+                core::mem::transmute::<[f64; 2], [u8; 16]>([time, 1.0 / time])
+            }
+        };
+
+        println!("{seed:?}");
+
+        xs::from_seed(seed)
+    };
+
+    let mut eval_counts: [EvalCount; ALL_SORTED_HANDS_LEN as usize] = [
         EvalCount {
             win_count: 0,
             total: 0,
         };
-        ALL_SORTED_HANDS_LEN
+        ALL_SORTED_HANDS_LEN as usize
     ];
 
-    // TODO remove the need for this
-    for count in eval_counts.iter_mut() {
-        count.win_count = 1;
-        count.total = 2;
+    for hand_i_1 in 0..ALL_SORTED_HANDS_LEN {
+        println!("{hand_i_1}/{ALL_SORTED_HANDS_LEN}");
+        for hand_i_2 in 0..ALL_SORTED_HANDS_LEN {
+            println!("    {hand_i_2}/{ALL_SORTED_HANDS_LEN}");
+            const CHUNK_SIZE: u32 = ALL_SORTED_HANDS_LEN as u32;
+            const SKIP_SIZE_RANGE: core::ops::Range<u32> = 
+                (ALL_SORTED_HANDS_LEN as u32 * ALL_SORTED_HANDS_LEN as u32)..(16 * ALL_SORTED_HANDS_LEN as u32 * ALL_SORTED_HANDS_LEN as u32);
+
+            let mut flop_i: u32 = 0;
+            let mut skip_counter = 0;
+            while flop_i < ALL_SORTED_FLOPS_LEN {
+                count_evaluation(
+                    &mut eval_counts,
+                    hand_i_1,
+                    hand_i_2,
+                    flop_i,
+                );
+
+                skip_counter += 1;
+                if skip_counter < CHUNK_SIZE {
+                    flop_i += 1;
+                } else {
+                    flop_i += xs::range(&mut rng, SKIP_SIZE_RANGE);
+                    skip_counter = 0;
+                }
+            }
+        }
     }
 
     write!(file, "[")?;
@@ -154,6 +256,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     write!(file, "]")?;
+
+    // Actually flush to disk before printing the success message.
+    file.flush()?;
+    drop(file);
+
+    println!("wrote win_probabilty to {WIN_PROBABILTY_OUTPUT_PATH}");
 
     Ok(())
 }

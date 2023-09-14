@@ -34,6 +34,28 @@ pub mod holdem {
 
     const WIN_PROBABILITY: [Probability; ALL_SORTED_HANDS_LEN] = include!("holdem_win_probability.in");
 
+    #[test]
+    fn win_probability_seems_sane() {
+        use crate::probability::{SEVENTY_FIVE_PERCENT};
+        // Multiple external sources say pocket aces are 85% likely to win.
+        // So, let's use 75% as a reasonable lower-bound that should always
+        // be achievable.
+        const ACES: [models::Card; 4] = [0, 1, 2, 3];
+        for a1 in ACES {
+            for a2 in ACES {
+                if a1 == a2 { continue }
+                let hand = [a1, a2];
+                let index = hand_to_sorted_hand_index(hand);
+                assert!(
+                    WIN_PROBABILITY[index]
+                    >= SEVENTY_FIVE_PERCENT,
+                    "{hand:?} P(win) = {} < {SEVENTY_FIVE_PERCENT} (75%)",
+                    WIN_PROBABILITY[index]
+                );
+            }
+        }
+    }
+
     pub fn hand_win_probability(hand: Hand) -> Probability {
         WIN_PROBABILITY[hand_to_sorted_hand_index(hand)]
     }
