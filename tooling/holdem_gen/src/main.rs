@@ -50,7 +50,7 @@ use look_up::{
 
 type Flop = [Card; 3];
 
-const ALL_SORTED_FLOPS_LEN: u32 = 380204032;
+const ALL_SORTED_FLOPS_LEN: u32 = 22_100;
 
 fn sorted_flop(index: usize) -> Flop {
     use std::sync::OnceLock;
@@ -80,11 +80,16 @@ fn sorted_flop(index: usize) -> Flop {
             }
             i1 += 1;
         }
-    
+        assert_eq!(all_flops.len(), ALL_SORTED_FLOPS_LEN as usize);
         all_flops.into_boxed_slice()
     });
 
     all_sorted_flops[index]
+}
+
+#[test]
+fn sorted_flop_has_the_expected_last_flop() {
+    assert_eq!(sorted_flop((ALL_SORTED_FLOPS_LEN - 1) as usize), [49, 50, 51]);
 }
 
 type Count = u32;
@@ -224,7 +229,7 @@ fn count_evaluation_works_on_these_few_examples() {
         }
     }
 
-    let eval_counts = &eval_counts[0..8];
+    let eval_counts = &eval_counts[1000..1008];
 
     assert!(
         !eval_counts.iter().any(|count| count.total <= FLOPS_TO_CHECK),
