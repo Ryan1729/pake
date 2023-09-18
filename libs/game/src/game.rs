@@ -672,10 +672,20 @@ pub fn update_and_render(
                         }
                     };
 
-                    if let Action::Fold = action {
-                        if call_remainder == 0 {
-                            action = Action::Call;
-                        }
+                    match action {
+                        Action::Fold => {
+                            if call_remainder == 0 {
+                                action = Action::Call;
+                            }
+                        },
+                        Action::Call => {},
+                        Action::Raise(raise_amount) => {
+                            if state.table.moneys[current_i]
+                                .checked_sub(raise_amount)
+                                .is_none() {
+                                action = Action::Raise(state.table.moneys[current_i]);
+                            }
+                        },
                     }
 
                     Some(action)
