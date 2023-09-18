@@ -205,7 +205,7 @@ fn count_evaluation(
 }
 
 #[test]
-fn count_evaluation_works_on_these_few_examples() {
+fn count_evaluation_works_on_these_few_flops() {
     let mut eval_counts: [EvalCount; ALL_SORTED_HANDS_LEN as usize] = [
         EvalCount {
             win_count: 0,
@@ -233,12 +233,12 @@ fn count_evaluation_works_on_these_few_examples() {
 
     assert!(
         !eval_counts.iter().any(|count| count.total <= FLOPS_TO_CHECK),
-        "WARNING: a total was <= {FLOPS_TO_CHECK}\n {eval_counts:?}"
+        "a total was <= {FLOPS_TO_CHECK}\n {eval_counts:?}"
     );
 
     assert!(
         eval_counts.iter().any(|count| count.probability() != 0),
-        "WARNING: all propabilities were == 0\n {eval_counts:?}"
+        "all propabilities were == 0\n {eval_counts:?}"
     );
 }
 
@@ -277,41 +277,62 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         ALL_SORTED_HANDS_LEN as usize
     ];
 
-    const SUBSET_SIZE: FlopCount = 1 << 12;//1 << 18;
-    // TODO? maybe multiple random subsets would reduce bias?
-    let mut subset: [FlopIndex; SUBSET_SIZE as usize] = [0; SUBSET_SIZE as usize];
-    
-    for output_index in subset.iter_mut() {
-        // Pick a (more) normally distributed set by taking the average of N samples.
-        const SAMPLE_DIGITS: u8 = 4;
-        const SAMPLE_PO2: u8 = 1 << 4;
-        let mut max = 0;
-        for _ in 0..SAMPLE_PO2 {
-            let addend = xs::range(&mut rng, 0..ALL_SORTED_FLOPS_LEN);
-            max = std::cmp::max(max, addend);
-            *output_index = output_index.saturating_add(addend);
-        }
-        *output_index >>= u32::from(SAMPLE_DIGITS);
-
-        assert!(*output_index < ALL_SORTED_FLOPS_LEN);
-    }
-
-    // TODO? Measure whether sorting like this meaningfully improves cache locality?
-    subset.sort();
+    let used_size;
+    let flops;
+    #[cfg(any())] // if 0
     {
-        let min = subset[0];
-        let max = subset[subset.len() - 1];
-        assert!(min < max);
-        let middle = ALL_SORTED_FLOPS_LEN / 2;
-        assert!(min < middle, "{min} >= {middle}");
-        assert!(max > middle, "{max} <= {middle}");
+        const SUBSET_SIZE: FlopCount = 1 << 12;
+        // TODO? maybe multiple random subsets would reduce bias?
+        let mut subset: [FlopIndex; SUBSET_SIZE as usize] = [0; SUBSET_SIZE as usize];
+        
+        for output_index in subset.iter_mut() {
+            // Pick a (more) normally distributed set by taking the average of N samples.
+            const SAMPLE_DIGITS: u8 = 4;
+            const SAMPLE_PO2: u8 = 1 << 4;
+            let mut max = 0;
+            for _ in 0..SAMPLE_PO2 {
+                let addend = xs::range(&mut rng, 0..ALL_SORTED_FLOPS_LEN);
+                max = std::cmp::max(max, addend);
+                *output_index = output_index.saturating_add(addend);
+            }
+            *output_index >>= u32::from(SAMPLE_DIGITS);
+    
+            assert!(*output_index < ALL_SORTED_FLOPS_LEN);
+        }
+    
+        // TODO? Measure whether sorting like this meaningfully improves cache locality?
+        subset.sort();
+        {
+            let min = subset[0];
+            let max = subset[subset.len() - 1];
+            assert!(min < max);
+            let middle = ALL_SORTED_FLOPS_LEN / 2;
+            assert!(min < middle, "{min} >= {middle}");
+            assert!(max > middle, "{max} <= {middle}");
+        }
+
+        used_size = SUBSET_SIZE;
+        flops = subset;
     }
+    #[cfg(all())] // if 1
+    {
+        used_size = ALL_SORTED_FLOPS_LEN;
+        let mut all_flops = [0; ALL_SORTED_FLOPS_LEN as usize];
+        let mut index = 0;
+        for flop in all_flops.iter_mut() {
+            *flop = index;
+            index += 1;
+        }
+        flops = all_flops;
+    }
+
+    println!("Using {used_size}/{ALL_SORTED_FLOPS_LEN} flops");
 
     for hand_i_1 in 0..ALL_SORTED_HANDS_LEN {
         println!("{hand_i_1}/{ALL_SORTED_HANDS_LEN}");
         for hand_i_2 in (hand_i_1 + 1)..ALL_SORTED_HANDS_LEN {
             //println!("    {hand_i_2}/{ALL_SORTED_HANDS_LEN}");
-            for flop_i in subset {
+            for flop_i in flops {
                 count_evaluation(
                     &mut eval_counts,
                     hand_i_1,
@@ -323,7 +344,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     println!("{ALL_SORTED_HANDS_LEN}/{ALL_SORTED_HANDS_LEN}");
 
-    writeln!(file, "// Seed used was: {seed:?}. Used {SUBSET_SIZE}/{ALL_SORTED_FLOPS_LEN} flops")?;
+    writeln!(file, "// Seed used was: {seed:?}. Used {used_size}/{ALL_SORTED_FLOPS_LEN} flops")?;
     write!(file, "[")?;
 
     for (i, count) in eval_counts.iter().enumerate() {

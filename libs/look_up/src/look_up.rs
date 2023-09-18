@@ -40,7 +40,7 @@ pub mod holdem {
         // Multiple external sources say pocket aces are 85% likely to win.
         // So, let's use 75% as a reasonable lower-bound that should always
         // be achievable.
-        const ACES: [models::Card; 4] = [0, 1, 2, 3];
+        const ACES: [models::Card; 4] = [0, 13, 26, 39];
         for a1 in ACES {
             for a2 in ACES {
                 if a1 == a2 { continue }
