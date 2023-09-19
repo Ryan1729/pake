@@ -15,6 +15,13 @@ pub struct HoldemMenuSelection {
     pub bet: Money,
 }
 
+#[derive(Clone, Copy, Default)]
+pub enum Modal {
+    #[default]
+    Nothing,
+    Chart,
+}
+
 #[derive(Clone)]
 pub struct HoldemStateBundle {
     pub deck: Deck,
@@ -23,6 +30,7 @@ pub struct HoldemStateBundle {
     pub current: HandIndex,
     pub pot: Pot,
     pub selection: HoldemMenuSelection,
+    pub modal: Modal,
 }
 
 #[derive(Clone)]
@@ -109,6 +117,7 @@ mod ui {
         StartingMoneySelect,
         HoldemHand(HandIndex),
         HoldemMenu(HoldemMenuId),
+        HoldemChartButton,
         ShowdownSubmit,
     }
 
@@ -274,6 +283,10 @@ pub fn update_and_render(
                 $eval
             );
 
+            // Lowercase the first letter, since upper case is weird in the font
+            // right now
+            eval_text[0].make_ascii_lowercase();
+
             let $text = eval_text;
         }
     }
@@ -375,7 +388,8 @@ pub fn update_and_render(
 
                     let show_if_player_owned = match group.ctx.hot {
                         HoldemHand(index) => index == i,
-                        HoldemMenu(_) => true,
+                        HoldemMenu(_)
+                        | HoldemChartButton => true,
                         _ => false,
                     } && current == i;
 
@@ -448,24 +462,6 @@ pub fn update_and_render(
             for _ in hands.iter() {
                 match group.ctx.hot {
                     HoldemHand(mut index) if usize::from(index) == i => {
-                        const HAND_DESC_H: unscaled::H = unscaled::h_const_div(
-                            command::HEIGHT_H,
-                            4
-                        );
-
-                        const HAND_DESC_RECT: unscaled::Rect = unscaled::Rect {
-                            x: unscaled::X(0),
-                            y: unscaled::y_const_add_h(
-                                unscaled::Y(0),
-                                unscaled::h_const_sub(
-                                    command::HEIGHT_H,
-                                    HAND_DESC_H
-                                )
-                            ),
-                            w: command::WIDTH_W,
-                            h: HAND_DESC_H,
-                        };
-
                         stack_money_text!(money_text = state.table.moneys[i]);
 
                         group.commands.draw_nine_slice(
@@ -506,17 +502,19 @@ pub fn update_and_render(
 
                         if group.input.pressed_this_frame(Button::LEFT) {
                             if index == 0 {
-                                index = hands_len;
+                                group.ctx.set_next_hot(HoldemChartButton);
+                            } else {
+                                index -= 1;
+                                group.ctx.set_next_hot(HoldemHand(index));
                             }
-                            index -= 1;
-                            group.ctx.set_next_hot(HoldemHand(index));
-                        } if group.input.pressed_this_frame(Button::RIGHT) {
+                        } else if group.input.pressed_this_frame(Button::RIGHT) {
                             index += 1;
                             if index >= hands_len {
-                                index = 0;
+                                group.ctx.set_next_hot(HoldemChartButton);
+                            } else {
+                                group.ctx.set_next_hot(HoldemHand(index));
                             }
-                            group.ctx.set_next_hot(HoldemHand(index));
-                        } if group.input.pressed_this_frame(Button::A) {
+                        } else if group.input.pressed_this_frame(Button::A) {
                             $bundle.selection.action_kind = match (allowed_kind_mode, $bundle.selection.action_kind) {
                                 (AllowedKindMode::NoFolding, ActionKind::Fold) => ActionKind::Call,
                                 (AllowedKindMode::All, action_kind)
@@ -527,6 +525,8 @@ pub fn update_and_render(
                         } else {
                             group.ctx.set_next_hot(HoldemHand(index));
                         }
+
+                        break
                     }
                     _ => {}
                 }
@@ -553,6 +553,80 @@ pub fn update_and_render(
                 }
             }
 
+            const MENU_H: unscaled::H = unscaled::h_const_div(
+                command::HEIGHT_H,
+                6
+            );
+
+            const MENU_RECT: unscaled::Rect = unscaled::Rect {
+                x: unscaled::X(0),
+                y: unscaled::y_const_add_h(
+                    unscaled::Y(0),
+                    unscaled::h_const_sub(
+                        command::HEIGHT_H,
+                        MENU_H
+                    )
+                ),
+                w: command::WIDTH_W,
+                h: MENU_H,
+            };
+
+            const HAND_DESC_H: unscaled::H = unscaled::h_const_div(
+                command::HEIGHT_H,
+                4
+            );
+
+            const HAND_DESC_RECT: unscaled::Rect = unscaled::Rect {
+                x: unscaled::X(0),
+                y: unscaled::y_const_add_h(
+                    unscaled::Y(0),
+                    unscaled::h_const_sub(
+                        command::HEIGHT_H,
+                        HAND_DESC_H
+                    )
+                ),
+                w: command::WIDTH_W,
+                h: HAND_DESC_H,
+            };
+
+            {
+                let w = unscaled::W(50);
+                let h = unscaled::H(50);
+
+                if do_button(
+                    group,
+                    ButtonSpec {
+                        id: HoldemChartButton,
+                        rect: unscaled::Rect {
+                            x: unscaled::X(0) + ((command::WIDTH_W) - w),
+                            y: HAND_DESC_RECT.y - h,
+                            w,
+                            h,
+                        },
+                        text: b"chart",
+                    }
+                ) {
+                    $bundle.modal = Modal::Chart;
+                }
+            }
+
+            match group.ctx.hot {
+                HoldemChartButton => {
+                    group.commands.draw_nine_slice(
+                        gfx::NineSlice::Button,
+                        HAND_DESC_RECT
+                    );
+
+                    if group.input.pressed_this_frame(Button::LEFT)
+                    || group.input.pressed_this_frame(Button::UP) {
+                        group.ctx.set_next_hot(HoldemHand(hands_len - 1));
+                    } else if group.input.pressed_this_frame(Button::RIGHT)
+                    || group.input.pressed_this_frame(Button::DOWN) {
+                        group.ctx.set_next_hot(HoldemHand(0));
+                    }
+                }
+                _ => {}
+            }
 
             if let Zero = group.ctx.hot {
                 group.ctx.set_next_hot(HoldemHand(0));
@@ -693,24 +767,6 @@ pub fn update_and_render(
                 (false, None) => {
                     match group.ctx.hot {
                         HoldemMenu(menu_id) => {
-                            const MENU_H: unscaled::H = unscaled::h_const_div(
-                                command::HEIGHT_H,
-                                6
-                            );
-
-                            const MENU_RECT: unscaled::Rect = unscaled::Rect {
-                                x: unscaled::X(0),
-                                y: unscaled::y_const_add_h(
-                                    unscaled::Y(0),
-                                    unscaled::h_const_sub(
-                                        command::HEIGHT_H,
-                                        MENU_H
-                                    )
-                                ),
-                                w: command::WIDTH_W,
-                                h: MENU_H,
-                            };
-
                             stack_money_text!(money_text = state.table.moneys[current_i]);
 
                             group.commands.draw_nine_slice(
@@ -889,6 +945,22 @@ pub fn update_and_render(
                 }
             };
 
+            match $bundle.modal {
+                // TODO only decide on action if modal is nothing?
+                Modal::Nothing => {},
+                Modal::Chart => {
+                    group.commands.draw_nine_slice(
+                        gfx::NineSlice::Window,
+                        FULLSCREEN_MODAL_RECT
+                    );
+
+                    if group.input.pressed_this_frame(Button::B) {
+                        group.ctx.set_next_hot(HoldemChartButton);
+                        $bundle.modal = Modal::Nothing;
+                    }
+                }
+            }
+
             if let Some(action) = action_opt {
                 let bet = match action {
                     Action::Fold => PotAction::Fold,
@@ -978,6 +1050,7 @@ pub fn update_and_render(
                 current,
                 pot,
                 selection: HoldemMenuSelection::default(),
+                modal: Modal::default(),
             };
         }
     }
@@ -1090,6 +1163,13 @@ pub fn update_and_render(
             };
         }
     }
+
+    const FULLSCREEN_MODAL_RECT: unscaled::Rect = unscaled::Rect {
+        x: unscaled::X(0),
+        y: unscaled::Y(0),
+        w: command::WIDTH_W,
+        h: command::HEIGHT_H,
+    };
 
     macro_rules! award_now {
         ($hand_index: ident , $pot: expr) => {
@@ -1419,16 +1499,9 @@ pub fn update_and_render(
             // TODO draw a modal that shows who won how much, and have
             // a button to go on to the next game.
 
-            const SHOWDOWN_MODAL_RECT: unscaled::Rect = unscaled::Rect {
-                x: unscaled::X(0),
-                y: unscaled::Y(0),
-                w: command::WIDTH_W,
-                h: command::HEIGHT_H,
-            };
-
             group.commands.draw_nine_slice(
                 gfx::NineSlice::Window,
-                SHOWDOWN_MODAL_RECT
+                FULLSCREEN_MODAL_RECT
             );
 
             #[derive(Debug, Default)]
