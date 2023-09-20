@@ -9,7 +9,7 @@ pub mod holdem {
     use crate::probability::{FIFTY_PERCENT, Probability};
     use models::{ALL_CARDS, DECK_SIZE, holdem::Hand};
 
-    const ALL_SORTED_HANDS_LEN: usize = 1326;
+    pub const ALL_SORTED_HANDS_LEN: usize = 1326;
     pub const ALL_SORTED_HANDS: [Hand; ALL_SORTED_HANDS_LEN] = {
         let mut all_hands = [[0; 2]; ALL_SORTED_HANDS_LEN];
 
@@ -32,7 +32,7 @@ pub mod holdem {
         all_hands
     };
 
-    const WIN_PROBABILITY: [Probability; ALL_SORTED_HANDS_LEN] = include!("holdem_win_probability.in");
+    pub const WIN_PROBABILITY: [Probability; ALL_SORTED_HANDS_LEN] = include!("holdem_win_probability.in");
 
     #[test]
     fn win_probability_seems_sane() {

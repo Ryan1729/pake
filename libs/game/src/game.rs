@@ -954,6 +954,35 @@ pub fn update_and_render(
                         FULLSCREEN_MODAL_RECT
                     );
 
+                    use unscaled::Inner;
+                    let row_count = Inner::from(39u8);
+                    let col_count = Inner::from(34u8);
+
+                    assert_eq!(
+                        usize::from(row_count * col_count),
+                        look_up::holdem::ALL_SORTED_HANDS_LEN
+                    );
+
+                    for y in 0..row_count {
+                        for x in 0..col_count {
+                            let i = usize::from(y * col_count + x);
+
+                            let mut prob_text = [0 as u8; 20];
+                            let _cant_actually_fail = write!(
+                                &mut prob_text[..],
+                                "{}",
+                                look_up::holdem::WIN_PROBABILITY[i]
+                            );
+
+                            group.commands.print_chars(
+                                &prob_text,
+                                unscaled::X(x * 16),
+                                unscaled::Y(y * 16),
+                                6
+                            );
+                        }
+                    }
+
                     if group.input.pressed_this_frame(Button::B) {
                         group.ctx.set_next_hot(HoldemChartButton);
                         $bundle.modal = Modal::Nothing;
