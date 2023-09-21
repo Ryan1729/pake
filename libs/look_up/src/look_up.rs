@@ -32,7 +32,8 @@ pub mod holdem {
         all_hands
     };
 
-    pub const WIN_PROBABILITY: [Probability; ALL_SORTED_HANDS_LEN] = include!("holdem_win_probability.in");
+    const WIN_PROBABILITY_LEN: usize = ALL_SORTED_HANDS_LEN;
+    const WIN_PROBABILITY: [Probability; WIN_PROBABILITY_LEN] = include!("holdem_win_probability.in");
 
     #[test]
     fn win_probability_seems_sane() {
@@ -55,6 +56,14 @@ pub mod holdem {
             }
         }
     }
+
+    pub const SUITED_WIN_PROBABILITY_LEN: usize = 312;
+    pub const SUITED_WIN_PROBABILITY: [Probability; SUITED_WIN_PROBABILITY_LEN] = 
+        include!("suited_holdem_win_probability.in");
+
+    pub const UNSUITED_WIN_PROBABILITY_LEN: usize = 1014;
+    pub const UNSUITED_WIN_PROBABILITY: [Probability; UNSUITED_WIN_PROBABILITY_LEN] = 
+        include!("unsuited_holdem_win_probability.in");
 
     pub fn hand_win_probability(hand: Hand) -> Probability {
         WIN_PROBABILITY[hand_to_sorted_hand_index(hand)]

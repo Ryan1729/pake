@@ -1,4 +1,4 @@
-use models::{ALL_CARDS, Card, holdem::{CommunityCards, Hand}};
+use models::{ALL_CARDS, Card, get_suit, holdem::{CommunityCards, Hand}};
 
 use std::fs::OpenOptions;
 
@@ -246,12 +246,26 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     use std::io::Write;
 
     const WIN_PROBABILTY_OUTPUT_PATH: &str = "../../libs/look_up/src/holdem_win_probability.in";
+    const SUITED_WIN_PROBABILTY_OUTPUT_PATH: &str = "../../libs/look_up/src/suited_holdem_win_probability.in";
+    const UNSUITED_WIN_PROBABILTY_OUTPUT_PATH: &str = "../../libs/look_up/src/unsuited_holdem_win_probability.in";
 
-    let mut file = OpenOptions::new()
+    let mut plain_win_prob_file = OpenOptions::new()
         .write(true)
         .truncate(true)
         .create(false)
         .open(WIN_PROBABILTY_OUTPUT_PATH)?;
+
+    let mut suited_win_prob_file = OpenOptions::new()
+        .write(true)
+        .truncate(true)
+        .create(false)
+        .open(SUITED_WIN_PROBABILTY_OUTPUT_PATH)?;
+
+    let mut unsuited_win_prob_file = OpenOptions::new()
+        .write(true)
+        .truncate(true)
+        .create(false)
+        .open(UNSUITED_WIN_PROBABILTY_OUTPUT_PATH)?;
 
     let seed = {
         let time = std::time::SystemTime::now()
@@ -278,44 +292,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     ];
 
     let used_size;
-    let flops;
     #[cfg(any())] // if 0
     {
-        const SUBSET_SIZE: FlopCount = 1 << 12;
-        // TODO? maybe multiple random subsets would reduce bias?
-        let mut subset: [FlopIndex; SUBSET_SIZE as usize] = [0; SUBSET_SIZE as usize];
-        
-        for output_index in subset.iter_mut() {
-            // Pick a (more) normally distributed set by taking the average of N samples.
-            const SAMPLE_DIGITS: u8 = 4;
-            const SAMPLE_PO2: u8 = 1 << 4;
-            let mut max = 0;
-            for _ in 0..SAMPLE_PO2 {
-                let addend = xs::range(&mut rng, 0..ALL_SORTED_FLOPS_LEN);
-                max = std::cmp::max(max, addend);
-                *output_index = output_index.saturating_add(addend);
-            }
-            *output_index >>= u32::from(SAMPLE_DIGITS);
-    
-            assert!(*output_index < ALL_SORTED_FLOPS_LEN);
-        }
-    
-        // TODO? Measure whether sorting like this meaningfully improves cache locality?
-        subset.sort();
-        {
-            let min = subset[0];
-            let max = subset[subset.len() - 1];
-            assert!(min < max);
-            let middle = ALL_SORTED_FLOPS_LEN / 2;
-            assert!(min < middle, "{min} >= {middle}");
-            assert!(max > middle, "{max} <= {middle}");
-        }
+        let flops;
 
-        used_size = SUBSET_SIZE;
-        flops = subset;
-    }
-    #[cfg(all())] // if 1
-    {
         used_size = ALL_SORTED_FLOPS_LEN;
         let mut all_flops = [0; ALL_SORTED_FLOPS_LEN as usize];
         let mut index = 0;
@@ -324,40 +304,93 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             index += 1;
         }
         flops = all_flops;
-    }
 
-    println!("Using {used_size}/{ALL_SORTED_FLOPS_LEN} flops");
-
-    for hand_i_1 in 0..ALL_SORTED_HANDS_LEN {
-        println!("{hand_i_1}/{ALL_SORTED_HANDS_LEN}");
-        for hand_i_2 in (hand_i_1 + 1)..ALL_SORTED_HANDS_LEN {
-            //println!("    {hand_i_2}/{ALL_SORTED_HANDS_LEN}");
-            for flop_i in flops {
-                count_evaluation(
-                    &mut eval_counts,
-                    hand_i_1,
-                    hand_i_2,
-                    flop_i,
-                );
+        println!("Using {used_size}/{ALL_SORTED_FLOPS_LEN} flops");
+    
+        for hand_i_1 in 0..ALL_SORTED_HANDS_LEN {
+            println!("{hand_i_1}/{ALL_SORTED_HANDS_LEN}");
+            for hand_i_2 in (hand_i_1 + 1)..ALL_SORTED_HANDS_LEN {
+                //println!("    {hand_i_2}/{ALL_SORTED_HANDS_LEN}");
+                for flop_i in flops {
+                    count_evaluation(
+                        &mut eval_counts,
+                        hand_i_1,
+                        hand_i_2,
+                        flop_i,
+                    );
+                }
             }
         }
+        println!("{ALL_SORTED_HANDS_LEN}/{ALL_SORTED_HANDS_LEN}");
     }
-    println!("{ALL_SORTED_HANDS_LEN}/{ALL_SORTED_HANDS_LEN}");
-
-    writeln!(file, "// Seed used was: {seed:?}. Used {used_size}/{ALL_SORTED_FLOPS_LEN} flops")?;
-    write!(file, "[")?;
-
-    for (i, count) in eval_counts.iter().enumerate() {
-        write!(file, "{},", count.probability())?;
+    #[cfg(all())] // if 1
+    {
+        used_size = ALL_SORTED_FLOPS_LEN;
+        const WIN_PROBABILITY: [Probability; ALL_SORTED_HANDS_LEN as usize] = include!("../../../libs/look_up/src/holdem_win_probability.in");
+        for i in 0..ALL_SORTED_HANDS_LEN as usize {
+            eval_counts[i] = EvalCount {
+                win_count: u32::from(WIN_PROBABILITY[i]),
+                total: 256,
+            };
+        }
     }
 
-    writeln!(file, "]")?;
+    {
+        writeln!(plain_win_prob_file, "// Seed used was: {seed:?}. Used {used_size}/{ALL_SORTED_FLOPS_LEN} flops")?;
+        write!(plain_win_prob_file, "[")?;
+    
+        for (i, count) in eval_counts.iter().enumerate() {
+            write!(plain_win_prob_file, "{},", count.probability())?;
+        }
+    
+        writeln!(plain_win_prob_file, "]")?;
+    
+        // Actually flush to disk before printing the success message.
+        plain_win_prob_file.flush()?;
+        drop(plain_win_prob_file);
 
-    // Actually flush to disk before printing the success message.
-    file.flush()?;
-    drop(file);
+        println!("wrote win_probabilty to {WIN_PROBABILTY_OUTPUT_PATH}");
+    }
+    {
+        writeln!(suited_win_prob_file, "// Seed used was: {seed:?}. Used {used_size}/{ALL_SORTED_FLOPS_LEN} flops")?;
+        write!(suited_win_prob_file, "[")?;
+    
+        // TODO put in good order for chart
+        for (i, count) in eval_counts.iter().enumerate() {
+            let hand = ALL_SORTED_HANDS[i];
+            if get_suit(hand[0]) == get_suit(hand[1]) {
+                write!(suited_win_prob_file, "{},", count.probability())?;
+            }
+        }
+    
+        writeln!(suited_win_prob_file, "]")?;
+    
+        // Actually flush to disk before printing the success message.
+        suited_win_prob_file.flush()?;
+        drop(suited_win_prob_file);
 
-    println!("wrote win_probabilty to {WIN_PROBABILTY_OUTPUT_PATH}");
+        println!("wrote suited_win_probabilty to {SUITED_WIN_PROBABILTY_OUTPUT_PATH}");
+    }
+    {
+        writeln!(unsuited_win_prob_file, "// Seed used was: {seed:?}. Used {used_size}/{ALL_SORTED_FLOPS_LEN} flops")?;
+        write!(unsuited_win_prob_file, "[")?;
+    
+        // TODO put in good order for chart
+        for (i, count) in eval_counts.iter().enumerate() {
+            let hand = ALL_SORTED_HANDS[i];
+            if get_suit(hand[0]) != get_suit(hand[1]) {
+                write!(unsuited_win_prob_file, "{},", count.probability())?;
+            }
+        }
+    
+        writeln!(unsuited_win_prob_file, "]")?;
+    
+        // Actually flush to disk before printing the success message.
+        unsuited_win_prob_file.flush()?;
+        drop(unsuited_win_prob_file);
+
+        println!("wrote unsuited_win_probabilty to {UNSUITED_WIN_PROBABILTY_OUTPUT_PATH}");
+    }
 
     // We'd rather have a bad version on disk that we can examine, than abort
     // early, given we're looking at things we can't know until the expensive
