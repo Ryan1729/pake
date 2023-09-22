@@ -27,6 +27,25 @@ pub const ALL_CARDS: [Card; DECK_SIZE as usize] = {
     all_cards
 };
 
+pub fn card_text_byte(card: Card) -> u8 {
+    match get_rank(card) {
+        0 => b'a',
+        1 => b'2',
+        2 => b'3',
+        3 => b'4',
+        4 => b'5',
+        5 => b'6',
+        6 => b'7',
+        7 => b'8',
+        8 => b'9',
+        9 => b't',
+        10 => b'j',
+        11 => b'q',
+        12 => b'k',
+        _ => b'?',
+    }
+}
+
 #[cfg(any())]
 pub fn gen_card(rng: &mut Xs) -> Card {
     xs::range(rng, 0..DECK_SIZE as _) as Card
@@ -60,6 +79,10 @@ pub mod holdem {
     use super::*;
 
     pub type Hand = [Card; 2];
+
+    pub fn short_hand_text(hand: Hand) -> [u8; 2] {
+        [card_text_byte(hand[0]), card_text_byte(hand[1])]
+    }
 
     #[derive(Copy, Clone, Debug, Default)]
     pub enum Action {

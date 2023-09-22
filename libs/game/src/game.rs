@@ -1,7 +1,7 @@
 #![allow(unused_imports)]
 
 use gfx::{SPACING_H, SPACING_W, Commands, Highlighting::{Highlighted, Plain}};
-use look_up::{holdem::{ALL_SORTED_HANDS, hand_win_probability}, probability::{FIFTY_PERCENT, SEVENTY_FIVE_PERCENT}};
+use look_up::{holdem::{ALL_SORTED_HANDS, hand_win_probability}, probability::{TWENTY_FIVE_PERCENT, FIFTY_PERCENT, SEVENTY_FIVE_PERCENT}};
 use models::{Card, ALL_CARDS, Money, NonZeroMoney, holdem::{MAX_PLAYERS, MAX_POTS, Action, ActionKind, ActionSpec, AllowedKindMode, CommunityCards, Deck, Facing, FullBoard, Hand, HandIndex, HandLen, Hands, PerPlayer, Pot, PotAction, RoundOutcome, gen_action, gen_deck, gen_hand_index}};
 use platform_types::{Button, Dir, Input, PaletteIndex, Speaker, SFX, command, unscaled};
 
@@ -444,7 +444,7 @@ pub fn update_and_render(
             let call_leftover = state.table.moneys[current_i]
                 .checked_sub(call_remainder);
 
-            let allowed_kind_mode = 
+            let allowed_kind_mode =
                 if call_remainder > 0 {
                     AllowedKindMode::All
                 } else if call_leftover.unwrap_or(0) > 0 {
@@ -954,38 +954,62 @@ pub fn update_and_render(
                         FULLSCREEN_MODAL_RECT
                     );
 
-                    {
-                        use unscaled::Inner;
-                        let row_count = Inner::from(13u8);
-                        let col_count = Inner::from(12u8);
-    
-                        let mut i = 0;
-                        for y in 0..row_count {
-                            for x in 0..(col_count - y) {
-                                let mut prob_text = [0 as u8; 20];
-                                let _cant_actually_fail = write!(
-                                    &mut prob_text[..],
-                                    "{}",
-                                    // TODO convert to percentage
-                                    look_up::holdem::SUITED_WIN_PROBABILITY[i]
-                                );
-    
+                    // TODO? Could prebake many of these chart related calculations
+                    // instead of redoing them so often.
+                    #[derive(Clone, Copy)]
+                    enum ChartElem {
+                        LineBreak,
+                        Hand(Hand),
+                    }
+
+                    const SUITED_CHART_ELEMS: [ChartElem; 8] = {
+                        use ChartElem::*;
+                        // TODO all suited hands
+                        [
+                            Hand([0, 12]),
+                            Hand([0, 11]),
+                            LineBreak,
+                            Hand([0, 10]),
+                            Hand([0, 9]),
+                            LineBreak,
+                            Hand([0, 8]),
+                            Hand([0, 7]),
+                        ]
+                    };
+                    let x_start = unscaled::X(0) + SPACING_W;
+                    let mut x = x_start;
+                    let mut y = unscaled::Y(0) + SPACING_H;
+                    for elem in SUITED_CHART_ELEMS {
+                        match elem {
+                            ChartElem::LineBreak => {
+                                y += unscaled::H(16);
+                                x = x_start;
+                            },
+                            ChartElem::Hand(hand) => {
+                                let probability = hand_win_probability(hand);
+                                // TODO better colour selection
+                                let colour = if probability > SEVENTY_FIVE_PERCENT {
+                                    1
+                                } else if probability > FIFTY_PERCENT {
+                                    2
+                                } else if probability > TWENTY_FIVE_PERCENT {
+                                    3
+                                } else {
+                                    4
+                                };
+
+                                let mut hand_text = models::holdem::short_hand_text(hand);
+
                                 group.commands.print_chars(
-                                    &prob_text,
-                                    unscaled::X(x * 16),
-                                    unscaled::Y(y * 16),
-                                    6
+                                    &hand_text,
+                                    x,
+                                    y,
+                                    colour
                                 );
 
-                                i += 1;
-                            }
+                                x += unscaled::W(16);
+                            },
                         }
-
-                        // TODO uncomment; make pass
-                        //assert_eq!(
-                            //i,
-                            //look_up::holdem::SUITED_WIN_PROBABILITY_LEN
-                        //);
                     }
 
                     // TODO different modes for UNSUITED etc.
