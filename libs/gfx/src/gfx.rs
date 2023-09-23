@@ -336,6 +336,31 @@ impl Commands {
             })
         );
     }
+
+    pub fn draw_chart_block(
+        &mut self,
+        x: unscaled::X,
+        y: unscaled::Y,
+        colour: PaletteIndex
+    ) {
+        type Inner = sprite::Inner;
+        self.commands.push(
+            Command {
+                sprite_xy: sprite::XY {
+                    x: sprite::X(chart_block::BASE_X),
+                    y: sprite::Y(chart_block::BASE_Y),
+                },
+                rect: Rect::from_unscaled(unscaled::Rect {
+                    x,
+                    y,
+                    w: chart_block::WIDTH,
+                    h: chart_block::HEIGHT,
+                }),
+                colour_override: PALETTE[colour as usize],
+            }
+        );
+
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -539,6 +564,18 @@ pub mod chevron {
 
     pub const BASE_X: u16 = 128;
     pub const BASE_Y: u16 = 24;
+}
+
+pub mod chart_block {
+    use super::*;
+
+    use unscaled::{W, H};
+
+    pub const WIDTH: W = W(9);
+    pub const HEIGHT: H = H(8);
+
+    pub const BASE_X: u16 = 128;
+    pub const BASE_Y: u16 = 120;
 }
 
 pub const TEN_CHAR: u8 = 27;

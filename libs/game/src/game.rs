@@ -1,6 +1,6 @@
 #![allow(unused_imports)]
 
-use gfx::{SPACING_H, SPACING_W, Commands, Highlighting::{Highlighted, Plain}};
+use gfx::{CHAR_SPACING_H, CHAR_SPACING_W, SPACING_H, SPACING_W, chart_block, Commands, Highlighting::{Highlighted, Plain}};
 use look_up::{holdem::{ALL_SORTED_HANDS, hand_win_probability}, probability::{TWENTY_FIVE_PERCENT, FIFTY_PERCENT, SEVENTY_FIVE_PERCENT}};
 use models::{Card, ALL_CARDS, Money, NonZeroMoney, holdem::{MAX_PLAYERS, MAX_POTS, Action, ActionKind, ActionSpec, AllowedKindMode, CommunityCards, Deck, Facing, FullBoard, Hand, HandIndex, HandLen, Hands, PerPlayer, Pot, PotAction, RoundOutcome, gen_action, gen_deck, gen_hand_index}};
 use platform_types::{Button, Dir, Input, PaletteIndex, Speaker, SFX, command, unscaled};
@@ -982,7 +982,7 @@ pub fn update_and_render(
                     for elem in SUITED_CHART_ELEMS {
                         match elem {
                             ChartElem::LineBreak => {
-                                y += unscaled::H(16);
+                                y += chart_block::HEIGHT;
                                 x = x_start;
                             },
                             ChartElem::Hand(hand) => {
@@ -998,16 +998,22 @@ pub fn update_and_render(
                                     4
                                 };
 
-                                let mut hand_text = models::holdem::short_hand_text(hand);
-
-                                group.commands.print_chars(
-                                    &hand_text,
+                                group.commands.draw_chart_block(
                                     x,
                                     y,
                                     colour
                                 );
 
-                                x += unscaled::W(16);
+                                let mut hand_text = models::holdem::short_hand_text(hand);
+
+                                group.commands.print_chars(
+                                    &hand_text,
+                                    x + CHAR_SPACING_W,
+                                    y + CHAR_SPACING_H,
+                                    6
+                                );
+
+                                x += chart_block::WIDTH;
                             },
                         }
                     }
