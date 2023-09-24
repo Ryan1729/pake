@@ -962,19 +962,39 @@ pub fn update_and_render(
                         Hand(Hand),
                     }
 
-                    const SUITED_CHART_ELEMS: [ChartElem; 8] = {
+                    const SUITED_CHART_ELEMS_LEN: usize = 125;
+                    const SUITED_CHART_ELEMS: [ChartElem; SUITED_CHART_ELEMS_LEN] = {
                         use ChartElem::*;
-                        // TODO all suited hands
-                        [
-                            Hand([0, 12]),
-                            Hand([0, 11]),
-                            LineBreak,
-                            Hand([0, 10]),
-                            Hand([0, 9]),
-                            LineBreak,
-                            Hand([0, 8]),
-                            Hand([0, 7]),
-                        ]
+
+                        // Ace at the low index because ace high.
+                        let clubs = [0, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1];
+                        let mut diamonds = [13, 25, 24, 23, 22, 21, 20, 19, 18, 17, 16, 15, 14];
+
+                        let mut output = [ChartElem::LineBreak; SUITED_CHART_ELEMS_LEN];
+
+                        let mut index = 0;
+
+                        let mut card_1_i = 0;
+                        while card_1_i < clubs.len() {
+                            let card_1 = clubs[card_1_i];
+                            let mut card_2_i = card_1_i;
+
+                            while card_2_i < diamonds.len() {
+                                let card_2 = diamonds[card_2_i];
+
+                                output[index] = Hand([card_1, card_2]);
+                                index += 1;
+
+                                card_2_i += 1;
+                            }
+
+                            output[index] = LineBreak;
+                            index += 1;
+
+                            card_1_i += 1;
+                        }
+
+                        output
                     };
                     let x_start = unscaled::X(0) + SPACING_W;
                     let mut x = x_start;

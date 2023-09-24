@@ -571,7 +571,7 @@ pub mod chart_block {
 
     use unscaled::{W, H};
 
-    pub const WIDTH: W = W(9);
+    pub const WIDTH: W = W(10);
     pub const HEIGHT: H = H(8);
 
     pub const BASE_X: u16 = 128;
