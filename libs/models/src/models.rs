@@ -80,7 +80,13 @@ pub mod holdem {
 
     pub type Hand = [Card; 2];
 
-    pub fn short_hand_text(hand: Hand) -> [u8; 2] {
+    pub fn short_hand_text(mut hand: Hand) -> [u8; 2] {
+        // High card first looks nicer
+        if get_rank(hand[0]) < get_rank(hand[1]) {
+            let mut temp = hand[0];
+            hand[0] = hand[1];
+            hand[1] = temp;
+        }
         [card_text_byte(hand[0]), card_text_byte(hand[1])]
     }
 

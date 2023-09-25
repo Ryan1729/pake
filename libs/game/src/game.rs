@@ -988,7 +988,12 @@ pub fn update_and_render(
                             while card_2_i < clubs.len() {
                                 let card_2 = clubs[card_2_i];
 
-                                output[index] = Hand([card_1, card_2]);
+                                let hand = if card_1 < card_2 {
+                                    [card_1, card_2]
+                                } else {
+                                    [card_2, card_1]
+                                };
+                                output[index] = Hand(hand);
                                 index += 1;
 
                                 card_2_i += 1;
@@ -1006,7 +1011,6 @@ pub fn update_and_render(
 
                         // Ace at the low index because ace high.
                         let clubs = [0, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1];
-                        let diamonds = [13, 25, 24, 23, 22, 21, 20, 19, 18, 17, 16, 15, 14];
 
                         let mut output = [ChartElem::LineBreak; UNSUITED_CHART_ELEMS_LEN];
 
@@ -1023,10 +1027,15 @@ pub fn update_and_render(
                             let card_1 = clubs[card_1_i];
                             let mut card_2_i = card_1_i;
 
-                            while card_2_i < diamonds.len() {
-                                let card_2 = diamonds[card_2_i];
+                            while card_2_i < clubs.len() {
+                                let card_2 = clubs[card_2_i];
 
-                                output[index] = Hand([card_1, card_2]);
+                                let hand = if card_1 < card_2 {
+                                    [card_1, card_2 + models::RANK_COUNT]
+                                } else {
+                                    [card_2, card_1 + models::RANK_COUNT]
+                                };
+                                output[index] = Hand(hand);
                                 index += 1;
 
                                 card_2_i += 1;
