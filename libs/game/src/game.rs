@@ -959,23 +959,67 @@ pub fn update_and_render(
                     #[derive(Clone, Copy)]
                     enum ChartElem {
                         LineBreak,
+                        Title(&'static [u8]),
                         Hand(Hand),
                     }
 
-                    const SUITED_CHART_ELEMS_LEN: usize = 125;
+                    const SUITED_CHART_ELEMS_LEN: usize = 92;
                     const SUITED_CHART_ELEMS: [ChartElem; SUITED_CHART_ELEMS_LEN] = {
                         use ChartElem::*;
 
                         // Ace at the low index because ace high.
                         let clubs = [0, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1];
-                        let mut diamonds = [13, 25, 24, 23, 22, 21, 20, 19, 18, 17, 16, 15, 14];
 
                         let mut output = [ChartElem::LineBreak; SUITED_CHART_ELEMS_LEN];
 
                         let mut index = 0;
 
+                        output[index] = Title(b"suited hands");
+                        index += 1;
+
                         let mut card_1_i = 0;
                         while card_1_i < clubs.len() {
+                            output[index] = LineBreak;
+                            index += 1;
+
+                            let card_1 = clubs[card_1_i];
+                            let mut card_2_i = card_1_i + 1;
+
+                            while card_2_i < clubs.len() {
+                                let card_2 = clubs[card_2_i];
+
+                                output[index] = Hand([card_1, card_2]);
+                                index += 1;
+
+                                card_2_i += 1;
+                            }
+
+                            card_1_i += 1;
+                        }
+
+                        output
+                    };
+
+                    const UNSUITED_CHART_ELEMS_LEN: usize = 106;
+                    const UNSUITED_CHART_ELEMS: [ChartElem; UNSUITED_CHART_ELEMS_LEN] = {
+                        use ChartElem::*;
+
+                        // Ace at the low index because ace high.
+                        let clubs = [0, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1];
+                        let diamonds = [13, 25, 24, 23, 22, 21, 20, 19, 18, 17, 16, 15, 14];
+
+                        let mut output = [ChartElem::LineBreak; UNSUITED_CHART_ELEMS_LEN];
+
+                        let mut index = 0;
+
+                        output[index] = Title(b"unsuited hands");
+                        index += 1;
+
+                        let mut card_1_i = 0;
+                        while card_1_i < clubs.len() {
+                            output[index] = LineBreak;
+                            index += 1;
+
                             let card_1 = clubs[card_1_i];
                             let mut card_2_i = card_1_i;
 
@@ -988,55 +1032,78 @@ pub fn update_and_render(
                                 card_2_i += 1;
                             }
 
-                            output[index] = LineBreak;
-                            index += 1;
-
                             card_1_i += 1;
                         }
 
                         output
                     };
-                    let x_start = unscaled::X(0) + SPACING_W;
-                    let mut x = x_start;
-                    let mut y = unscaled::Y(0) + SPACING_H;
-                    for elem in SUITED_CHART_ELEMS {
-                        match elem {
-                            ChartElem::LineBreak => {
-                                y += chart_block::HEIGHT;
-                                x = x_start;
-                            },
-                            ChartElem::Hand(hand) => {
-                                let probability = hand_win_probability(hand);
-                                // TODO better colour selection
-                                let colour = if probability > SEVENTY_FIVE_PERCENT {
-                                    1
-                                } else if probability > FIFTY_PERCENT {
-                                    2
-                                } else if probability > TWENTY_FIVE_PERCENT {
-                                    3
-                                } else {
-                                    4
-                                };
 
-                                group.commands.draw_chart_block(
-                                    x,
-                                    y,
-                                    colour
-                                );
+                    macro_rules! render_chart {
+                        ($x_start: expr, $y_start: expr, $iter: expr) => ({
+                            let x_start = $x_start;
+                            let mut x = x_start;
+                            let mut y = $y_start;
+                            for elem in $iter {
+                                match elem {
+                                    ChartElem::LineBreak => {
+                                        y += chart_block::HEIGHT;
+                                        x = x_start;
+                                    },
+                                    ChartElem::Title(title) => {
+                                        group.commands.print_chars(
+                                            title,
+                                            x,
+                                            y,
+                                            6
+                                        );
+                                    },
+                                    ChartElem::Hand(hand) => {
+                                        let probability = hand_win_probability(hand);
+                                        // TODO better colour selection
+                                        let colour = if probability > SEVENTY_FIVE_PERCENT {
+                                            1
+                                        } else if probability > FIFTY_PERCENT {
+                                            2
+                                        } else if probability > TWENTY_FIVE_PERCENT {
+                                            3
+                                        } else {
+                                            4
+                                        };
 
-                                let mut hand_text = models::holdem::short_hand_text(hand);
+                                        group.commands.draw_chart_block(
+                                            x,
+                                            y,
+                                            colour
+                                        );
 
-                                group.commands.print_chars(
-                                    &hand_text,
-                                    x + CHAR_SPACING_W,
-                                    y + CHAR_SPACING_H,
-                                    6
-                                );
+                                        let mut hand_text = models::holdem::short_hand_text(hand);
 
-                                x += chart_block::WIDTH;
-                            },
-                        }
+                                        group.commands.print_chars(
+                                            &hand_text,
+                                            x + CHAR_SPACING_W,
+                                            y + CHAR_SPACING_H,
+                                            6
+                                        );
+
+                                        x += chart_block::WIDTH;
+                                    },
+                                }
+                            }
+
+                            (x, y)
+                        })
                     }
+                    let (x, mut y) = render_chart!(
+                        unscaled::X(0) + SPACING_W,
+                        unscaled::Y(0) + SPACING_H,
+                        SUITED_CHART_ELEMS
+                    );
+
+                    let (_, _) = render_chart!(
+                        unscaled::X(0) + SPACING_W,
+                        y + SPACING_H,
+                        UNSUITED_CHART_ELEMS
+                    );
 
                     // TODO different modes for UNSUITED etc.
 
