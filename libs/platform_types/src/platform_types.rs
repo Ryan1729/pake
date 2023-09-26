@@ -1157,3 +1157,12 @@ pub const PALETTE: [ARGB; 8] = [
     WHITE,
     BLACK,
 ];
+
+pub const BLUE_INDEX: PaletteIndex = 0;
+pub const GREEN_INDEX: PaletteIndex = 1;
+pub const RED_INDEX: PaletteIndex = 2;
+pub const YELLOW_INDEX: PaletteIndex = 3;
+pub const PURPLE_INDEX: PaletteIndex = 4;
+pub const GREY_INDEX: PaletteIndex = 5;
+pub const WHITE_INDEX: PaletteIndex = 6;
+pub const BLACK_INDEX: PaletteIndex = 7;

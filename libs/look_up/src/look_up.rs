@@ -4,6 +4,7 @@ pub mod probability {
     pub const TWENTY_FIVE_PERCENT: Probability = 0b0100_0000;
     pub const FIFTY_PERCENT: Probability = 0b1000_0000;
     pub const SEVENTY_FIVE_PERCENT: Probability = 0b1100_0000;
+    pub const EIGHTY_SEVEN_POINT_FIVE_PERCENT: Probability = 0b1110_0000;
 }
 
 
