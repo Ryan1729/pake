@@ -9,6 +9,8 @@ use xs::{Xs, Seed};
 
 use std::io::Write;
 
+const TEXT: PaletteIndex = 6;
+
 #[derive(Clone, Default)]
 pub struct HoldemMenuSelection {
     pub action_kind: ActionKind,
@@ -65,11 +67,19 @@ struct CpuPersonality {
     // TODO
 }
 
+#[derive(Clone, Default, PartialEq)]
+enum SkipState {
+    #[default]
+    Watch,
+    Skip,
+}
+
 #[derive(Clone, Default)]
 pub struct HoldemTable {
     state: HoldemState,
     moneys: [Money; MAX_PLAYERS as usize],
     personalities: [Personality; MAX_PLAYERS as usize],
+    skip: SkipState,
 }
 
 #[derive(Clone, Default)]
@@ -118,6 +128,7 @@ mod ui {
         HoldemHand(HandIndex),
         HoldemMenu(HoldemMenuId),
         HoldemChartButton,
+        SkipRemainderOfGameSelect,
         ShowdownSubmit,
     }
 
@@ -206,7 +217,7 @@ mod ui {
             spec.text,
             xy.x,
             xy.y,
-            6
+            TEXT
         );
 
         result
@@ -318,13 +329,12 @@ pub fn update_and_render(
                     &text,
                     xy.x,
                     xy.y,
-                    6
+                    TEXT
                 );
             }
         }
     }
 
-    const TEXT: PaletteIndex = 6;
     let min_money_unit: NonZeroMoney = NonZeroMoney::MIN.saturating_add(5 - 1);
     let small_blind_amount: NonZeroMoney = min_money_unit;
     let large_blind_amount: NonZeroMoney = small_blind_amount.saturating_add(min_money_unit.get());
@@ -641,7 +651,7 @@ pub fn update_and_render(
                         &main_pot_text,
                         COMMUNITY_BASE_X - pre_nul_len(&main_pot_text) * gfx::CHAR_ADVANCE,
                         y,
-                        6
+                        TEXT
                     );
 
                     y += gfx::CHAR_LINE_ADVANCE;
@@ -808,7 +818,7 @@ pub fn update_and_render(
                                         action_kind_text,
                                         xy.x,
                                         xy.y,
-                                        6
+                                        TEXT
                                     );
                                 }
 
@@ -1063,7 +1073,7 @@ pub fn update_and_render(
                                             title,
                                             x,
                                             y,
-                                            6
+                                            TEXT
                                         );
                                     },
                                     ChartElem::Hand(hand) => {
@@ -1091,7 +1101,7 @@ pub fn update_and_render(
                                             &hand_text,
                                             x + CHAR_SPACING_W,
                                             y + CHAR_SPACING_H,
-                                            6
+                                            TEXT
                                         );
 
                                         x += chart_block::WIDTH;
@@ -1219,9 +1229,6 @@ pub fn update_and_render(
 
     macro_rules! finish_round {
         () => {
-            // TODO option to skip watching remaining players if they are all
-            // CPUs
-
             #[cfg(debug_assertions)]
             let expected_user_count = {
                 state.table.moneys
@@ -1296,33 +1303,50 @@ pub fn update_and_render(
 
             debug_assert!(remaining_player_count > 0);
 
-            match HandLen::try_from(remaining_player_count){
-                Ok(player_count) => {
-                    let (hands, deck) = models::holdem::deal(&mut state.rng, player_count);
+            let mut only_cpus_left = true;
+            // Assumes we just condensed the players
+            for i in 0..state.table.moneys.len() {
+                let money = state.table.moneys[i];
+                if money == 0 {
+                    break
+                }
+                if state.table.personalities[i].is_none() {
+                    only_cpus_left = false;
+                }
+            }
 
-                    let dealer = gen_hand_index(&mut state.rng, player_count);
+            if only_cpus_left && state.table.skip == SkipState::Skip {
+                // TODO? Actually simulate the remaining turns, maybe with a timeout?
+                state.table.state = <_>::default();
+            } else {
+                match HandLen::try_from(remaining_player_count){
+                    Ok(player_count) => {
+                        let (hands, deck) = models::holdem::deal(&mut state.rng, player_count);
 
-                    let mut pot = Pot::with_capacity(player_count, 16);
+                        let dealer = gen_hand_index(&mut state.rng, player_count);
 
-                    collect_blinds!(hands player_count dealer pot);
+                        let mut pot = Pot::with_capacity(player_count, 16);
 
-                    next_bundle!(bundle = hands, deck, dealer, pot);
+                        collect_blinds!(hands player_count dealer pot);
 
-                    state.table.state = PreFlop {
-                        bundle,
-                    };
-                },
-                Err(_) => {
-                    // TODO show a winner screen with more winner info.
-                    if state.table.personalities[0].is_none() {
-                        println!("User wins!");
-                    } else {
-                        println!("Cpu player wins!");
-                    }
+                        next_bundle!(bundle = hands, deck, dealer, pot);
 
-                    state.table.state = <_>::default();
-                },
-            };
+                        state.table.state = PreFlop {
+                            bundle,
+                        };
+                    },
+                    Err(_) => {
+                        // TODO show a winner screen with more winner info.
+                        if state.table.personalities[0].is_none() {
+                            println!("User wins!");
+                        } else {
+                            println!("Cpu player wins!");
+                        }
+
+                        state.table.state = <_>::default();
+                    },
+                };
+            }
         }
     }
 
@@ -1412,7 +1436,7 @@ pub fn update_and_render(
                     player_count_text,
                     xy.x,
                     xy.y,
-                    6
+                    TEXT
                 );
             }
             {
@@ -1427,7 +1451,7 @@ pub fn update_and_render(
                     players_label,
                     xy.x,
                     xy.y + gfx::CHAR_H,
-                    6
+                    TEXT
                 );
             }
 
@@ -1812,7 +1836,7 @@ pub fn update_and_render(
                         &player_text,
                         COMMUNITY_BASE_X - (pre_nul_len(&player_text) * gfx::CHAR_ADVANCE),
                         y,
-                        6
+                        TEXT
                     );
 
                     y += gfx::CHAR_LINE_ADVANCE;
@@ -1828,7 +1852,7 @@ pub fn update_and_render(
                             &amount_text,
                             COMMUNITY_BASE_X - (pre_nul_len(&amount_text) * gfx::CHAR_ADVANCE),
                             y,
-                            6
+                            TEXT
                         );
 
                         stack_eval_text!(eval_text = eval);
@@ -1837,7 +1861,7 @@ pub fn update_and_render(
                             &eval_text ,
                             COMMUNITY_BASE_X + gfx::CHAR_ADVANCE,
                             y,
-                            6
+                            TEXT
                         );
 
                         y += gfx::CHAR_LINE_ADVANCE;
@@ -1850,16 +1874,51 @@ pub fn update_and_render(
             let w = unscaled::W(50);
             let h = unscaled::H(20);
 
+            let submit_rect = unscaled::Rect {
+                x: unscaled::X(0) + ((command::WIDTH_W/2) - (w/2)),
+                y: unscaled::Y(0) + (command::HEIGHT_H - (h + SPACING_H)),
+                w,
+                h,
+            };
+
+            {
+                let skip_rect = unscaled::Rect {
+                    x: submit_rect.x - (w * 2),
+                    y: submit_rect.y - submit_rect.h,
+                    h: submit_rect.h * 2,
+                    ..submit_rect
+                };
+
+                let skip_text: &[u8] = match state.table.skip {
+                    SkipState::Skip => b"skip cpu only",
+                    SkipState::Watch => b"watch cpu only",
+                };
+
+                {
+                    let xy = gfx::center_line_in_rect(
+                        skip_text.len() as _,
+                        skip_rect,
+                    );
+                    group.commands.print_chars(
+                        skip_text,
+                        xy.x,
+                        xy.y,
+                        TEXT
+                    );
+                }
+
+                ui::draw_quick_select(
+                    group,
+                    skip_rect,
+                    SkipRemainderOfGameSelect,
+                );
+            }
+
             if do_button(
                 group,
                 ButtonSpec {
                     id: ShowdownSubmit,
-                    rect: unscaled::Rect {
-                        x: unscaled::X(0) + ((command::WIDTH_W/2) - (w/2)),
-                        y: unscaled::Y(0) + (command::HEIGHT_H - (h + SPACING_H)),
-                        w,
-                        h,
-                    },
+                    rect: submit_rect,
                     text: b"submit",
                 }
             ) {
@@ -1871,7 +1930,41 @@ pub fn update_and_render(
 
                 finish_round!();
             } else {
-                group.ctx.set_next_hot(ShowdownSubmit);
+                match group.ctx.hot {
+                    SkipRemainderOfGameSelect => {
+                        match input.dir_pressed_this_frame() {
+                            Some(Dir::Up) => {
+                                state.table.skip =
+                                    match state.table.skip {
+                                        SkipState::Skip => SkipState::Watch,
+                                        SkipState::Watch => SkipState::Skip,
+                                    };
+                            },
+                            Some(Dir::Down) => {
+                                state.table.skip =
+                                    match state.table.skip {
+                                        SkipState::Skip => SkipState::Watch,
+                                        SkipState::Watch => SkipState::Skip,
+                                    };
+                            },
+                            Some(Dir::Left | Dir::Right) => {
+                                group.ctx.set_next_hot(ShowdownSubmit);
+                            }
+                            None => {}
+                        }
+                    }
+                    ShowdownSubmit => {
+                         match input.dir_pressed_this_frame() {
+                            Some(Dir::Left | Dir::Right) => {
+                                group.ctx.set_next_hot(SkipRemainderOfGameSelect);
+                            }
+                            Some(Dir::Up | Dir::Down) | None => {}
+                        }
+                    }
+                    _ => {
+                        group.ctx.set_next_hot(ShowdownSubmit);
+                    }
+                }
             }
         },
     }
