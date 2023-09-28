@@ -685,7 +685,7 @@ pub fn update_and_render(
                             let probability = hand_win_probability(hand);
                             if probability >= SEVENTY_FIVE_PERCENT {
                                 let multiple = Money::from(xs::range(&mut state.rng, 3..6));
-                                Action::Raise(large_blind_amount.get().saturating_mul(multiple))
+                                Action::Raise(minimum_raise_total + large_blind_amount.get().saturating_mul(multiple))
                             } else if probability >= FIFTY_PERCENT {
                                 if xs::range(&mut state.rng, 0..5) == 0 {
                                     // Don't be perfectly predictable!
@@ -694,7 +694,7 @@ pub fn update_and_render(
                                         ActionSpec {
                                             one_past_max_money: NonZeroMoney::MIN.saturating_add(state.table.moneys[current_i]),
                                             min_money_unit,
-                                            call_amount,
+                                            minimum_raise_total,
                                         }
                                     )
                                 } else {
@@ -1143,37 +1143,59 @@ pub fn update_and_render(
                                 PotAction::Bet(call_remainder)
                             },
                             None => {
-                                let action = PotAction::Bet(
+                                let bet = PotAction::Bet(
                                     state.table.moneys[current_i]
                                 );
                                 state.table.moneys[current_i] = 0;
-                                action
+                                bet
                             }
                         }
                     },
                     Action::Raise(raise_amount) => {
-                        match
-                            state.table.moneys[current_i]
-                            .checked_sub(raise_amount)
-                        {
-                            Some(new_amount) => {
-                                state.table.moneys[current_i] = new_amount;
-                                PotAction::Bet(raise_amount)
+// The total bet needed to call
+            let call_amount = pot.call_amount();
+            let minimum_raise_total = call_amount + min_money_unit.get();
+            // The amount extra needed to call
+            let call_remainder = call_amount.saturating_sub(
+                pot.amount_for(current)
+            );
+            // The amount that would be leftover if the player was to call
+            let call_leftover = state.table.moneys[current_i]
+                .checked_sub(call_remainder);
+
+                        match call_leftover {
+                            Some(_) => {
+                                match
+                                    state.table.moneys[current_i]
+                                    .checked_sub(raise_amount)
+                                {
+                                    Some(new_amount) => {
+                                        state.table.moneys[current_i] = new_amount;
+                                        PotAction::Bet(raise_amount)
+                                    },
+                                    None => {
+                                        debug_assert!(
+                                            false,
+                                            "player {} raised {} with only {}",
+                                            $bundle.current,
+                                            raise_amount,
+                                            state.table.moneys[current_i],
+                                        );
+                                        PotAction::Bet(raise_amount)
+                                    }
+                                }
                             },
                             None => {
-                                debug_assert!(
-                                    false,
-                                    "player {} raised {} with only {}",
-                                    $bundle.current,
-                                    raise_amount,
-                                    state.table.moneys[current_i],
+                                let bet = PotAction::Bet(
+                                    state.table.moneys[current_i]
                                 );
-                                PotAction::Bet(raise_amount)
+                                state.table.moneys[current_i] = 0;
+                                bet
                             }
                         }
                     },
                 };
-
+                dbg!(action, bet, current);
                 pot.push_bet($bundle.current, bet);
 
                 $bundle.current += 1;

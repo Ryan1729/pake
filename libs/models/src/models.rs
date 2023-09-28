@@ -102,12 +102,12 @@ pub mod holdem {
     pub struct ActionSpec {
         pub one_past_max_money: NonZeroMoney,
         pub min_money_unit: NonZeroMoney,
-        pub call_amount: Money,
+        pub minimum_raise_total: Money,
     }
 
     pub fn gen_action(
         rng: &mut Xs,
-        ActionSpec { one_past_max_money, min_money_unit, call_amount }: ActionSpec
+        ActionSpec { one_past_max_money, min_money_unit, minimum_raise_total }: ActionSpec
     ) -> Action {
         use Action::*;
 
@@ -118,13 +118,13 @@ pub mod holdem {
                 // TODO? Maybe just take max_money as a param?
                 let max_money = one_past_max_money.get() - 1;
 
-                if call_amount > max_money {
+                if minimum_raise_total > max_money {
                     // Go all in
                     Call
                 } else {
                     let max_in_units = max_money/min_money_unit.get();
-                    let call_in_units = call_amount/min_money_unit.get();
-                    let output_in_units = xs::range(rng, call_in_units..core::cmp::max(call_in_units, max_in_units).saturating_add(1)) as Money;
+                    let min_in_units = minimum_raise_total/min_money_unit.get();
+                    let output_in_units = xs::range(rng, min_in_units..core::cmp::max(min_in_units, max_in_units).saturating_add(1)) as Money;
                     let output_in_money = output_in_units.saturating_mul(min_money_unit.get());
 
                     Raise(output_in_money)
