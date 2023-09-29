@@ -1195,7 +1195,7 @@ pub fn update_and_render(
                         }
                     },
                 };
-                dbg!(action, bet, current);
+
                 pot.push_bet($bundle.current, bet);
 
                 $bundle.current += 1;

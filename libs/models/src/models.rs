@@ -81,8 +81,11 @@ pub mod holdem {
     pub type Hand = [Card; 2];
 
     pub fn short_hand_text(mut hand: Hand) -> [u8; 2] {
+        let rank_0 = get_rank(hand[0]);
+        let rank_1 = get_rank(hand[1]);
         // High card first looks nicer
-        if get_rank(hand[0]) < get_rank(hand[1]) {
+        // != 0 to put ace first
+        if rank_0 != 0 && rank_0 < rank_1 {
             let mut temp = hand[0];
             hand[0] = hand[1];
             hand[1] = temp;
