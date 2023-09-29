@@ -36,7 +36,7 @@ pub struct HoldemStateBundle {
 }
 
 #[derive(Clone)]
-pub enum HoldemState {
+pub enum HoldemTableState {
     Undealt { player_count: HandLen, starting_money: Money },
     PreFlop {
         bundle: HoldemStateBundle,
@@ -51,7 +51,7 @@ pub enum HoldemState {
     },
 }
 
-impl Default for HoldemState {
+impl Default for HoldemTableState {
     fn default() -> Self {
         Self::Undealt {
             player_count: <_>::default(),
@@ -76,17 +76,24 @@ enum SkipState {
 
 #[derive(Clone, Default)]
 pub struct HoldemTable {
-    state: HoldemState,
+    state: HoldemTableState,
     moneys: [Money; MAX_PLAYERS as usize],
     personalities: [Personality; MAX_PLAYERS as usize],
     skip: SkipState,
 }
 
 #[derive(Clone, Default)]
+enum Mode {
+    #[default]
+    Title,
+    Holdem(HoldemTable),
+}
+
+#[derive(Clone, Default)]
 pub struct State {
     pub rng: Xs,
     pub ctx: ui::Context,
-    pub table: HoldemTable,
+    pub mode: Mode
 }
 
 impl State {
@@ -262,21 +269,57 @@ pub fn update_and_render(
     input: Input,
     speaker: &mut Speaker,
 ) {
-    use HoldemState::*;
+    state.ctx.frame_init();
+
+    match state.mode {
+        Mode::Title => {
+            // TODO actual title screen
+            // TODO in debug and/or a feature only, take a CLI arg or similar to
+            // select a mode and skip the title screen, without user input
+            state.mode = Mode::Holdem(<_>::default());
+        }
+        Mode::Holdem(ref mut table) => {
+            holdem_update_and_render(
+                commands,
+                HoldemState {
+                    rng: &mut state.rng,
+                    ctx: &mut state.ctx,
+                    table,
+                },
+                input,
+                speaker,
+            );
+        }
+    }
+}
+
+struct HoldemState<'state> {
+    pub rng: &'state mut Xs,
+    pub ctx: &'state mut ui::Context,
+    pub table: &'state mut HoldemTable
+}
+
+fn holdem_update_and_render(
+    commands: &mut Commands,
+    state: HoldemState<'_>,
+    input: Input,
+    speaker: &mut Speaker,
+) {
+    use HoldemTableState::*;
     use ui::Id::*;
+
+    let rng = state.rng;
 
     macro_rules! new_group {
         () => {
             &mut ui::Group {
                 commands,
-                ctx: &mut state.ctx,
+                ctx: state.ctx,
                 input,
                 speaker,
             }
         }
     }
-
-    state.ctx.frame_init();
 
     if input.gamepad != <_>::default() {
         speaker.request_sfx(SFX::CardPlace);
@@ -684,13 +727,13 @@ pub fn update_and_render(
                         None => {
                             let probability = hand_win_probability(hand);
                             if probability >= SEVENTY_FIVE_PERCENT {
-                                let multiple = Money::from(xs::range(&mut state.rng, 3..6));
+                                let multiple = Money::from(xs::range(rng, 3..6));
                                 Action::Raise(minimum_raise_total + large_blind_amount.get().saturating_mul(multiple))
                             } else if probability >= FIFTY_PERCENT {
-                                if xs::range(&mut state.rng, 0..5) == 0 {
+                                if xs::range(rng, 0..5) == 0 {
                                     // Don't be perfectly predictable!
                                     gen_action(
-                                        &mut state.rng,
+                                        rng,
                                         ActionSpec {
                                             one_past_max_money: NonZeroMoney::MIN.saturating_add(state.table.moneys[current_i]),
                                             min_money_unit,
@@ -1343,9 +1386,9 @@ pub fn update_and_render(
             } else {
                 match HandLen::try_from(remaining_player_count){
                     Ok(player_count) => {
-                        let (hands, deck) = models::holdem::deal(&mut state.rng, player_count);
+                        let (hands, deck) = models::holdem::deal(rng, player_count);
 
-                        let dealer = gen_hand_index(&mut state.rng, player_count);
+                        let dealer = gen_hand_index(rng, player_count);
 
                         let mut pot = Pot::with_capacity(player_count, 16);
 
@@ -1522,9 +1565,9 @@ pub fn update_and_render(
                     state.table.personalities[i] = Some(CpuPersonality{});
                 }
 
-                let (hands, deck) = models::holdem::deal(&mut state.rng, *player_count);
+                let (hands, deck) = models::holdem::deal(rng, *player_count);
 
-                let dealer = gen_hand_index(&mut state.rng, *player_count);
+                let dealer = gen_hand_index(rng, *player_count);
 
                 let mut pot = Pot::with_capacity(*player_count, 16);
 
