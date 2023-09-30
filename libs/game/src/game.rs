@@ -83,10 +83,22 @@ pub struct HoldemTable {
 }
 
 #[derive(Clone, Default)]
-enum Mode {
+enum ModeName {
     #[default]
-    Title,
+    Holdem,
+    //AceyDeucey
+}
+
+#[derive(Clone)]
+enum Mode {
+    Title(ModeName),
     Holdem(HoldemTable),
+}
+
+impl Default for Mode {
+    fn default() -> Self {
+        Self::Title(<_>::default())
+    }
 }
 
 #[derive(Clone, Default)]
@@ -129,6 +141,7 @@ mod ui {
     pub enum Id {
         #[default]
         Zero,
+        TitleBeginButton,
         Submit,
         PlayerCountSelect,
         StartingMoneySelect,
@@ -269,16 +282,70 @@ pub fn update_and_render(
     input: Input,
     speaker: &mut Speaker,
 ) {
+    macro_rules! new_group {
+        () => {
+            &mut ui::Group {
+                commands,
+                ctx: &mut state.ctx,
+                input,
+                speaker,
+            }
+        }
+    }
+
     state.ctx.frame_init();
 
-    match state.mode {
-        Mode::Title => {
+    match &mut state.mode {
+        Mode::Title(mode_name) => {
             // TODO actual title screen
+            const TITLE_X: unscaled::X = unscaled::x_const_add_w(
+                unscaled::X(0),
+                unscaled::w_const_div(
+                    unscaled::w_const_sub(command::WIDTH_W, gfx::title::WIDTH),
+                    2
+                )
+            );
+            const TITLE_Y: unscaled::Y = unscaled::Y(15);
+            commands.draw_title(
+                TITLE_X,
+                TITLE_Y,
+            );
             // TODO in debug and/or a feature only, take a CLI arg or similar to
             // select a mode and skip the title screen, without user input
-            state.mode = Mode::Holdem(<_>::default());
+
+            let group = new_group!();
+
+            let w = unscaled::W(50);
+            let h = unscaled::H(50);
+
+            if do_button(
+                group,
+                ButtonSpec {
+                    id: TitleBeginButton,
+                    rect: unscaled::Rect {
+                        x: unscaled::X(0) + ((command::WIDTH_W) - w) / 2,
+                        y: unscaled::Y(0) + command::HEIGHT_H - (h * 2),
+                        w,
+                        h,
+                    },
+                    text: b"begin",
+                }
+            ) {
+                state.mode = match mode_name {
+                    ModeName::Holdem => {
+                        Mode::Holdem(<_>::default())
+                    },
+                    //ModeName::AceyDeucey => {
+                        //Mode::AceyDeucey(<_>::default())
+                    //},
+                };
+            }
+
+            if let Zero = group.ctx.hot {
+                group.ctx.set_next_hot(TitleBeginButton);
+            }
         }
-        Mode::Holdem(ref mut table) => {
+        Mode::Holdem(table) => {
             holdem_update_and_render(
                 commands,
                 HoldemState {
@@ -1195,16 +1262,16 @@ fn holdem_update_and_render(
                         }
                     },
                     Action::Raise(raise_amount) => {
-// The total bet needed to call
-            let call_amount = pot.call_amount();
-            let minimum_raise_total = call_amount + min_money_unit.get();
-            // The amount extra needed to call
-            let call_remainder = call_amount.saturating_sub(
-                pot.amount_for(current)
-            );
-            // The amount that would be leftover if the player was to call
-            let call_leftover = state.table.moneys[current_i]
-                .checked_sub(call_remainder);
+                        // The total bet needed to call
+                        let call_amount = pot.call_amount();
+                        let minimum_raise_total = call_amount + min_money_unit.get();
+                        // The amount extra needed to call
+                        let call_remainder = call_amount.saturating_sub(
+                            pot.amount_for(current)
+                        );
+                        // The amount that would be leftover if the player was to call
+                        let call_leftover = state.table.moneys[current_i]
+                            .checked_sub(call_remainder);
 
                         match call_leftover {
                             Some(_) => {
@@ -1481,6 +1548,8 @@ fn holdem_update_and_render(
             ref mut player_count,
             ref mut starting_money,
         } => {
+            // TODO Add a back button to go back to the title screen
+
             let group = new_group!();
 
             let player_count_rect = unscaled::Rect {

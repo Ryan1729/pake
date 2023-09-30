@@ -90,6 +90,25 @@ impl Commands {
         }
     }
 
+    pub fn draw_title(
+        &mut self,
+        x: unscaled::X,
+        y: unscaled::Y,
+    ) {
+        self.sspr(
+            sprite::XY {
+                x: sprite::X(title::BASE_X),
+                y: sprite::Y(title::BASE_Y),
+            },
+            Rect::from_unscaled(unscaled::Rect {
+                x,
+                y,
+                w: title::WIDTH,
+                h: title::HEIGHT,
+            }),
+        );
+    }
+
     // TODO? Randomize these for visual interest? {
     const HOLDEM_HAND_X_OFFSET: unscaled::W = unscaled::w_const_div(card::WIDTH, 2);
     const HOLDEM_HAND_Y_OFFSET: unscaled::H = unscaled::H(0);
@@ -576,6 +595,18 @@ pub mod chart_block {
 
     pub const BASE_X: u16 = 128;
     pub const BASE_Y: u16 = 120;
+}
+
+pub mod title {
+    use super::*;
+
+    use unscaled::{W, H};
+
+    pub const WIDTH: W = W(42);
+    pub const HEIGHT: H = H(15);
+
+    pub const BASE_X: u16 = 152;
+    pub const BASE_Y: u16 = 240;
 }
 
 pub const TEN_CHAR: u8 = 27;
