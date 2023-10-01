@@ -83,14 +83,14 @@ pub struct HoldemTable {
 }
 
 #[derive(Clone, Default)]
-enum ModeName {
+pub enum ModeName {
     #[default]
     Holdem,
     //AceyDeucey
 }
 
 #[derive(Clone)]
-enum Mode {
+pub enum Mode {
     Title(ModeName),
     Holdem(HoldemTable),
 }
@@ -1506,6 +1506,7 @@ fn holdem_update_and_render(
                 }
             }
 
+            #[cfg(debug_assertions)]
             debug_assert_eq!(
                 state.table.moneys
                     .iter()
