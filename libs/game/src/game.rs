@@ -1,7 +1,7 @@
 #![allow(unused_imports)]
 
 use gfx::{CHAR_SPACING_H, CHAR_SPACING_W, SPACING_H, SPACING_W, chart_block, Commands, Highlighting::{Highlighted, Plain}};
-use look_up::{holdem::{ALL_SORTED_HANDS, hand_win_probability}, probability::{FIFTY_PERCENT, SEVENTY_FIVE_PERCENT, EIGHTY_SEVEN_POINT_FIVE_PERCENT}};
+use look_up::{holdem::{ALL_SORTED_HANDS, hand_win_probability}, probability::{FIFTY_PERCENT, SEVENTY_FIVE_PERCENT, EIGHTY_SEVEN_POINT_FIVE_PERCENT, Probability}};
 use models::{Card, ALL_CARDS, Money, NonZeroMoney, holdem::{MAX_PLAYERS, MAX_POTS, Action, ActionKind, ActionSpec, AllowedKindMode, CommunityCards, Deck, Facing, FullBoard, Hand, HandIndex, HandLen, Hands, PerPlayer, Pot, PotAction, RoundOutcome, gen_action, gen_deck, gen_hand_index}};
 use platform_types::{Button, Dir, Input, PaletteIndex, Speaker, SFX, command, unscaled};
 
@@ -142,6 +142,7 @@ mod ui {
         #[default]
         Zero,
         TitleBeginButton,
+        BackToTitleScreen,
         Submit,
         PlayerCountSelect,
         StartingMoneySelect,
@@ -276,6 +277,13 @@ mod ui {
 
 use ui::{ButtonSpec, Id::*, do_button};
 
+#[derive(Clone, Copy, Default)]
+enum ModeCmd {
+    #[default]
+    NoOp,
+    BackToTitleScreen
+}
+
 pub fn update_and_render(
     commands: &mut Commands,
     state: &mut State,
@@ -295,9 +303,12 @@ pub fn update_and_render(
 
     state.ctx.frame_init();
 
+    let mut cmd = ModeCmd::default();
+
     match &mut state.mode {
         Mode::Title(mode_name) => {
-            // TODO actual title screen
+            let group = new_group!();
+
             const TITLE_X: unscaled::X = unscaled::x_const_add_w(
                 unscaled::X(0),
                 unscaled::w_const_div(
@@ -306,14 +317,51 @@ pub fn update_and_render(
                 )
             );
             const TITLE_Y: unscaled::Y = unscaled::Y(15);
-            commands.draw_title(
+            group.commands.draw_title(
                 TITLE_X,
                 TITLE_Y,
             );
+
+            let mut y = TITLE_Y + gfx::title::HEIGHT;
+
+            {
+                y += SPACING_H;
+
+                const CONTROLS_W: unscaled::W = unscaled::W(100);
+                const CONTROLS_H: unscaled::H = unscaled::H(100);
+                const CONTROLS_X: unscaled::X = unscaled::x_const_add_w(
+                    unscaled::X(0),
+                    unscaled::w_const_div(
+                        unscaled::w_const_sub(command::WIDTH_W, CONTROLS_W),
+                        2
+                    )
+                );
+
+                let controls_rect = unscaled::Rect {
+                    x: CONTROLS_X,
+                    y,
+                    w: CONTROLS_W,
+                    h: CONTROLS_H,
+                };
+
+                let controls_text = b"this game uses the z, x, and arrow keys";
+
+                let xy = gfx::center_line_in_rect(
+                    controls_text.len() as _,
+                    controls_rect,
+                );
+                group.commands.print_chars(
+                    controls_text,
+                    xy.x,
+                    xy.y,
+                    TEXT
+                );
+            }
+
             // TODO in debug and/or a feature only, take a CLI arg or similar to
             // select a mode and skip the title screen, without user input
 
-            let group = new_group!();
+            
 
             let w = unscaled::W(50);
             let h = unscaled::H(50);
@@ -346,7 +394,7 @@ pub fn update_and_render(
             }
         }
         Mode::Holdem(table) => {
-            holdem_update_and_render(
+            cmd = holdem_update_and_render(
                 commands,
                 HoldemState {
                     rng: &mut state.rng,
@@ -356,6 +404,13 @@ pub fn update_and_render(
                 input,
                 speaker,
             );
+        }
+    }
+
+    match cmd {
+        ModeCmd::NoOp => {},
+        ModeCmd::BackToTitleScreen => {
+            state.mode = Mode::Title(ModeName::Holdem);
         }
     }
 }
@@ -371,11 +426,13 @@ fn holdem_update_and_render(
     state: HoldemState<'_>,
     input: Input,
     speaker: &mut Speaker,
-) {
+) -> ModeCmd {
     use HoldemTableState::*;
     use ui::Id::*;
 
     let rng = state.rng;
+
+    let mut cmd = ModeCmd::default();
 
     macro_rules! new_group {
         () => {
@@ -386,10 +443,6 @@ fn holdem_update_and_render(
                 speaker,
             }
         }
-    }
-
-    if input.gamepad != <_>::default() {
-        speaker.request_sfx(SFX::CardPlace);
     }
 
     const COMMUNITY_BASE_X: unscaled::X = unscaled::X(150);
@@ -1167,6 +1220,35 @@ fn holdem_update_and_render(
                         output
                     };
 
+                    struct ChartThreshold {
+                        colour: PaletteIndex,
+                        threshold: Probability,
+                        text: &'static [u8],
+                    }
+
+                    const CHART_THRESHOLDS: [ChartThreshold; 4] = [
+                        ChartThreshold {
+                            colour: platform_types::BLUE_INDEX,
+                            threshold: EIGHTY_SEVEN_POINT_FIVE_PERCENT,
+                            text: b"> 87.5%",
+                        },
+                        ChartThreshold {
+                            colour: platform_types::GREEN_INDEX,
+                            threshold: SEVENTY_FIVE_PERCENT,
+                            text: b"> 75%",
+                        },
+                        ChartThreshold {
+                            colour: platform_types::YELLOW_INDEX,
+                            threshold: FIFTY_PERCENT,
+                            text: b"> 50%",
+                        },
+                        ChartThreshold {
+                            colour: platform_types::RED_INDEX,
+                            threshold: 0,
+                            text: b"<= 50%",
+                        },
+                    ];
+
                     macro_rules! render_chart {
                         ($x_start: expr, $y_start: expr, $iter: expr) => ({
                             let x_start = $x_start;
@@ -1189,20 +1271,18 @@ fn holdem_update_and_render(
                                     ChartElem::Hand(hand) => {
                                         let probability = hand_win_probability(hand);
 
-                                        let colour = if probability > EIGHTY_SEVEN_POINT_FIVE_PERCENT {
-                                            platform_types::BLUE_INDEX
-                                        } else if probability > SEVENTY_FIVE_PERCENT {
-                                            platform_types::GREEN_INDEX
-                                        } else if probability > FIFTY_PERCENT {
-                                            platform_types::YELLOW_INDEX
-                                        } else {
-                                            platform_types::RED_INDEX
-                                        };
+                                        let mut colour_index = 0;
+                                        for ChartThreshold { colour, threshold, .. } in CHART_THRESHOLDS {
+                                            if probability > threshold {
+                                                colour_index = colour;
+                                                break
+                                            }
+                                        }
 
                                         group.commands.draw_chart_block(
                                             x,
                                             y,
-                                            colour
+                                            colour_index
                                         );
 
                                         let mut hand_text = models::holdem::short_hand_text(hand);
@@ -1222,8 +1302,8 @@ fn holdem_update_and_render(
                             (x, y)
                         })
                     }
-                    let (x, mut y) = render_chart!(
-                        unscaled::X(0) + SPACING_W,
+                    let (_, y) = render_chart!(
+                        unscaled::X(0) + chart_block::WIDTH + SPACING_W,
                         unscaled::Y(0) + SPACING_H,
                         SUITED_CHART_ELEMS
                     );
@@ -1234,7 +1314,27 @@ fn holdem_update_and_render(
                         UNSUITED_CHART_ELEMS
                     );
 
-                    // TODO different modes for UNSUITED etc.
+                    {
+                        let x = unscaled::X(0) + unscaled::Inner::from(models::RANK_COUNT + 1) * chart_block::WIDTH + SPACING_W;
+                        let mut y = unscaled::Y(0) + SPACING_H;
+                        for ChartThreshold { colour, threshold, text } in CHART_THRESHOLDS {
+                            group.commands.draw_chart_block(
+                                x,
+                                y,
+                                colour
+                            );
+
+                            group.commands.print_chars(
+                                text,
+                                x + chart_block::WIDTH + SPACING_W,
+                                y + CHAR_SPACING_H,
+                                TEXT
+                            );
+
+                            y += chart_block::HEIGHT + CHAR_SPACING_H;
+                        }
+                        
+                    }
 
                     if group.input.pressed_this_frame(Button::B) {
                         group.ctx.set_next_hot(HoldemChartButton);
@@ -1449,6 +1549,7 @@ fn holdem_update_and_render(
 
             if only_cpus_left && state.table.skip == SkipState::Skip {
                 // TODO? Actually simulate the remaining turns, maybe with a timeout?
+                speaker.request_sfx(SFX::CardPlace);
                 state.table.state = <_>::default();
             } else {
                 match HandLen::try_from(remaining_player_count){
@@ -1463,6 +1564,7 @@ fn holdem_update_and_render(
 
                         next_bundle!(bundle = hands, deck, dealer, pot);
 
+                        speaker.request_sfx(SFX::CardPlace);
                         state.table.state = PreFlop {
                             bundle,
                         };
@@ -1475,6 +1577,7 @@ fn holdem_update_and_render(
                             println!("Cpu player wins!");
                         }
 
+                        speaker.request_sfx(SFX::CardPlace);
                         state.table.state = <_>::default();
                     },
                 };
@@ -1548,9 +1651,23 @@ fn holdem_update_and_render(
             ref mut player_count,
             ref mut starting_money,
         } => {
-            // TODO Add a back button to go back to the title screen
-
             let group = new_group!();
+
+            if do_button(
+                group,
+                ButtonSpec {
+                    id: BackToTitleScreen,
+                    rect: unscaled::Rect {
+                        x: unscaled::X(0),
+                        y: unscaled::Y(0),
+                        w: unscaled::W(50),
+                        h: unscaled::H(50),
+                    },
+                    text: b"back",
+                }
+            ) {
+                cmd = ModeCmd::BackToTitleScreen;
+            }
 
             let player_count_rect = unscaled::Rect {
                 x: unscaled::X(100),
@@ -1645,15 +1762,27 @@ fn holdem_update_and_render(
 
                 next_bundle!(bundle = hands, deck, dealer, pot);
 
+                speaker.request_sfx(SFX::CardPlace);
                 state.table.state = PreFlop {
                     bundle,
                 };
             } else {
-                let menu = [PlayerCountSelect, StartingMoneySelect, Submit];
+                let menu = [BackToTitleScreen, PlayerCountSelect, StartingMoneySelect, Submit];
 
                 match group.ctx.hot {
+                    BackToTitleScreen => {
+                        let menu_i = 0;
+
+                        match input.dir_pressed_this_frame() {
+                            Some(Dir::Up | Dir::Left) => {},
+                            Some(Dir::Down | Dir::Right) => {
+                                group.ctx.set_next_hot(menu[menu_i + 1]);
+                            }
+                            None => {}
+                        }
+                    }
                     StartingMoneySelect => {
-                        let menu_i = 1;
+                        let menu_i = 2;
                         match input.dir_pressed_this_frame() {
                             Some(Dir::Up) => {
                                 *starting_money = starting_money.saturating_add(min_money_unit.get());
@@ -1674,7 +1803,7 @@ fn holdem_update_and_render(
                         }
                     }
                     PlayerCountSelect => {
-                        let menu_i = 0;
+                        let menu_i = 1;
                         match input.dir_pressed_this_frame() {
                             Some(Dir::Up) => {
                                 *player_count = player_count.saturating_add_1();
@@ -1682,7 +1811,9 @@ fn holdem_update_and_render(
                             Some(Dir::Down) => {
                                 *player_count = player_count.saturating_sub_1();
                             },
-                            Some(Dir::Left) => {}
+                            Some(Dir::Left) => {
+                                group.ctx.set_next_hot(menu[menu_i - 1]);
+                            }
                             Some(Dir::Right) => {
                                 group.ctx.set_next_hot(menu[menu_i + 1]);
                             }
@@ -1700,7 +1831,7 @@ fn holdem_update_and_render(
                         }
                     }
                     Zero => {
-                        group.ctx.set_next_hot(menu[0]);
+                        group.ctx.set_next_hot(PlayerCountSelect);
                     }
                     _ => {}
                 }
@@ -1724,6 +1855,7 @@ fn holdem_update_and_render(
                             bundle.dealer,
                             bundle.pot.clone()
                     );
+                    speaker.request_sfx(SFX::CardPlace);
                     state.table.state = PostFlop {
                         bundle: new_bundle,
                         community_cards
@@ -1764,6 +1896,7 @@ fn holdem_update_and_render(
                                     bundle.dealer,
                                     bundle.pot.clone()
                             );
+                            speaker.request_sfx(SFX::CardPlace);
                             state.table.state = PostFlop {
                                 bundle: new_bundle,
                                 community_cards: *community_cards,
@@ -1784,12 +1917,14 @@ fn holdem_update_and_render(
                                     bundle.dealer,
                                     bundle.pot.clone()
                             );
+                            speaker.request_sfx(SFX::CardPlace);
                             state.table.state = PostFlop {
                                 bundle: new_bundle,
                                 community_cards: *community_cards,
                             };
                         }
                         CommunityCards::River(flop, turn, river) => {
+                            speaker.request_sfx(SFX::CardPlace);
                             state.table.state = Showdown {
                                 bundle: bundle.clone(),
                                 full_board: [
@@ -2102,6 +2237,8 @@ fn holdem_update_and_render(
             }
         },
     }
+
+    cmd
 }
 
 fn pre_nul_len(
