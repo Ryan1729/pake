@@ -361,8 +361,6 @@ pub fn update_and_render(
             // TODO in debug and/or a feature only, take a CLI arg or similar to
             // select a mode and skip the title screen, without user input
 
-            
-
             let w = unscaled::W(50);
             let h = unscaled::H(50);
 
@@ -388,6 +386,15 @@ pub fn update_and_render(
                     //},
                 };
             }
+
+            const VERSION: &str = env!("CARGO_PKG_VERSION");
+
+            group.commands.print_chars(
+                VERSION.as_bytes(),
+                unscaled::X(0) + CHAR_SPACING_W,
+                unscaled::Y(0) + (command::HEIGHT_H - gfx::CHAR_H),
+                TEXT
+            );
 
             if let Zero = group.ctx.hot {
                 group.ctx.set_next_hot(TitleBeginButton);
