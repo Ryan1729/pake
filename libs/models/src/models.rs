@@ -86,7 +86,7 @@ pub mod holdem {
         // High card first looks nicer
         // != 0 to put ace first
         if rank_0 != 0 && rank_0 < rank_1 {
-            let mut temp = hand[0];
+            let temp = hand[0];
             hand[0] = hand[1];
             hand[1] = temp;
         }

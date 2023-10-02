@@ -76,23 +76,35 @@ enum SkipState {
 
 #[derive(Clone, Default)]
 pub struct HoldemTable {
+    seats: Seats,
     state: HoldemTableState,
+}
+
+#[derive(Clone, Default)]
+pub struct AceyDeuceyTable {
+    seats: Seats,
+}
+
+// TODO Did having this be a separate struct actually get us anything?
+#[derive(Clone, Default)]
+pub struct Seats {
     moneys: [Money; MAX_PLAYERS as usize],
     personalities: [Personality; MAX_PLAYERS as usize],
     skip: SkipState,
 }
 
-#[derive(Clone, Default)]
+#[derive(Clone, Copy, Default)]
 pub enum ModeName {
     #[default]
     Holdem,
-    //AceyDeucey
+    AceyDeucey
 }
 
 #[derive(Clone)]
 pub enum Mode {
     Title(ModeName),
     Holdem(HoldemTable),
+    AceyDeucey(AceyDeuceyTable)
 }
 
 impl Default for Mode {
@@ -290,115 +302,24 @@ pub fn update_and_render(
     input: Input,
     speaker: &mut Speaker,
 ) {
-    macro_rules! new_group {
-        () => {
-            &mut ui::Group {
-                commands,
-                ctx: &mut state.ctx,
-                input,
-                speaker,
-            }
-        }
-    }
-
     state.ctx.frame_init();
 
     let mut cmd = ModeCmd::default();
 
-    match &mut state.mode {
+    let mode = &mut state.mode;
+    match mode {
         Mode::Title(mode_name) => {
-            let group = new_group!();
-
-            const TITLE_X: unscaled::X = unscaled::x_const_add_w(
-                unscaled::X(0),
-                unscaled::w_const_div(
-                    unscaled::w_const_sub(command::WIDTH_W, gfx::title::WIDTH),
-                    2
-                )
+            let mode_name = *mode_name;
+            title_update_and_render(
+                commands,
+                TitleState {
+                    mode,
+                    ctx: &mut state.ctx,
+                    mode_name,
+                },
+                input,
+                speaker,
             );
-            const TITLE_Y: unscaled::Y = unscaled::Y(15);
-            group.commands.draw_title(
-                TITLE_X,
-                TITLE_Y,
-            );
-
-            let mut y = TITLE_Y + gfx::title::HEIGHT;
-
-            {
-                y += SPACING_H;
-
-                const CONTROLS_W: unscaled::W = unscaled::W(100);
-                const CONTROLS_H: unscaled::H = unscaled::H(100);
-                const CONTROLS_X: unscaled::X = unscaled::x_const_add_w(
-                    unscaled::X(0),
-                    unscaled::w_const_div(
-                        unscaled::w_const_sub(command::WIDTH_W, CONTROLS_W),
-                        2
-                    )
-                );
-
-                let controls_rect = unscaled::Rect {
-                    x: CONTROLS_X,
-                    y,
-                    w: CONTROLS_W,
-                    h: CONTROLS_H,
-                };
-
-                let controls_text = b"this game uses the z, x, and arrow keys";
-
-                let xy = gfx::center_line_in_rect(
-                    controls_text.len() as _,
-                    controls_rect,
-                );
-                group.commands.print_chars(
-                    controls_text,
-                    xy.x,
-                    xy.y,
-                    TEXT
-                );
-            }
-
-            // TODO in debug and/or a feature only, take a CLI arg or similar to
-            // select a mode and skip the title screen, without user input
-
-            let w = unscaled::W(50);
-            let h = unscaled::H(50);
-
-            if do_button(
-                group,
-                ButtonSpec {
-                    id: TitleBeginButton,
-                    rect: unscaled::Rect {
-                        x: unscaled::X(0) + ((command::WIDTH_W) - w) / 2,
-                        y: unscaled::Y(0) + command::HEIGHT_H - (h * 2),
-                        w,
-                        h,
-                    },
-                    text: b"begin",
-                }
-            ) {
-                state.mode = match mode_name {
-                    ModeName::Holdem => {
-                        Mode::Holdem(<_>::default())
-                    },
-                    //ModeName::AceyDeucey => {
-                        //Mode::AceyDeucey(<_>::default())
-                    //},
-                };
-            }
-
-            const VERSION: &str = env!("CARGO_PKG_VERSION");
-
-            group.commands.print_chars(
-                VERSION.as_bytes(),
-                unscaled::X(0) + CHAR_SPACING_W,
-                unscaled::Y(0) + (command::HEIGHT_H - gfx::CHAR_H),
-                TEXT
-            );
-
-            if let Zero = group.ctx.hot {
-                group.ctx.set_next_hot(TitleBeginButton);
-            }
         }
         Mode::Holdem(table) => {
             cmd = holdem_update_and_render(
@@ -412,6 +333,9 @@ pub fn update_and_render(
                 speaker,
             );
         }
+        Mode::AceyDeucey(table) => {
+            todo!();
+        }
     }
 
     match cmd {
@@ -419,6 +343,123 @@ pub fn update_and_render(
         ModeCmd::BackToTitleScreen => {
             state.mode = Mode::Title(ModeName::Holdem);
         }
+    }
+}
+
+struct TitleState<'state> {
+    mode: &'state mut Mode,
+    ctx: &'state mut ui::Context,
+    mode_name: ModeName,
+}
+
+fn title_update_and_render(
+    commands: &mut Commands,
+    state: TitleState<'_>,
+    input: Input,
+    speaker: &mut Speaker,
+) {
+    macro_rules! new_group {
+        () => {
+            &mut ui::Group {
+                commands,
+                ctx: state.ctx,
+                input,
+                speaker,
+            }
+        }
+    }
+
+    let group = new_group!();
+
+    const TITLE_X: unscaled::X = unscaled::x_const_add_w(
+        unscaled::X(0),
+        unscaled::w_const_div(
+            unscaled::w_const_sub(command::WIDTH_W, gfx::title::WIDTH),
+            2
+        )
+    );
+    const TITLE_Y: unscaled::Y = unscaled::Y(15);
+    group.commands.draw_title(
+        TITLE_X,
+        TITLE_Y,
+    );
+
+    let mut y = TITLE_Y + gfx::title::HEIGHT;
+
+    {
+        y += SPACING_H;
+
+        const CONTROLS_W: unscaled::W = unscaled::W(100);
+        const CONTROLS_H: unscaled::H = unscaled::H(100);
+        const CONTROLS_X: unscaled::X = unscaled::x_const_add_w(
+            unscaled::X(0),
+            unscaled::w_const_div(
+                unscaled::w_const_sub(command::WIDTH_W, CONTROLS_W),
+                2
+            )
+        );
+
+        let controls_rect = unscaled::Rect {
+            x: CONTROLS_X,
+            y,
+            w: CONTROLS_W,
+            h: CONTROLS_H,
+        };
+
+        let controls_text = b"this game uses the z, x, and arrow keys";
+
+        let xy = gfx::center_line_in_rect(
+            controls_text.len() as _,
+            controls_rect,
+        );
+        group.commands.print_chars(
+            controls_text,
+            xy.x,
+            xy.y,
+            TEXT
+        );
+    }
+
+    // TODO in debug and/or a feature only, take a CLI arg or similar to
+    // select a mode and skip the title screen, without user input
+
+    let w = unscaled::W(50);
+    let h = unscaled::H(50);
+
+    if do_button(
+        group,
+        ButtonSpec {
+            id: TitleBeginButton,
+            rect: unscaled::Rect {
+                x: unscaled::X(0) + ((command::WIDTH_W) - w) / 2,
+                y: unscaled::Y(0) + command::HEIGHT_H - (h * 2),
+                w,
+                h,
+            },
+            text: b"begin",
+        }
+    ) {
+        *state.mode = match state.mode_name {
+            ModeName::Holdem => {
+                Mode::Holdem(<_>::default())
+            },
+            ModeName::AceyDeucey => {
+                Mode::AceyDeucey(<_>::default())
+            },
+        };
+    }
+
+    const VERSION: &str = env!("CARGO_PKG_VERSION");
+
+    group.commands.print_chars(
+        VERSION.as_bytes(),
+        unscaled::X(0) + CHAR_SPACING_W,
+        unscaled::Y(0) + (command::HEIGHT_H - gfx::CHAR_H),
+        TEXT
+    );
+
+    if let Zero = group.ctx.hot {
+        group.ctx.set_next_hot(TitleBeginButton);
     }
 }
 
@@ -574,7 +615,7 @@ fn holdem_update_and_render(
                     } && current == i;
 
                     if pot.has_folded(i) {
-                        let facing = if let Some(_personality) = &state.table.personalities[current_i] {
+                        let facing = if let Some(_personality) = &state.table.seats.personalities[current_i] {
                             // TODO make decision based on personality
                             if cfg!(debug_assertions) {
                                 Facing::Up(hand)
@@ -596,7 +637,7 @@ fn holdem_update_and_render(
                         );
                     } else {
                         let facing = if show_if_player_owned
-                        && state.table.personalities[current_i].is_none() {
+                        && state.table.seats.personalities[current_i].is_none() {
                             Facing::Up(hand)
                         } else {
                             Facing::Down
@@ -621,7 +662,7 @@ fn holdem_update_and_render(
                 pot.amount_for(current)
             );
             // The amount that would be leftover if the player was to call
-            let call_leftover = state.table.moneys[current_i]
+            let call_leftover = state.table.seats.moneys[current_i]
                 .checked_sub(call_remainder);
 
             let allowed_kind_mode =
@@ -642,7 +683,7 @@ fn holdem_update_and_render(
             for _ in hands.iter() {
                 match group.ctx.hot {
                     HoldemHand(mut index) if usize::from(index) == i => {
-                        stack_money_text!(money_text = state.table.moneys[i]);
+                        stack_money_text!(money_text = state.table.seats.moneys[i]);
 
                         group.commands.draw_nine_slice(
                             gfx::NineSlice::Button,
@@ -814,7 +855,7 @@ fn holdem_update_and_render(
 
             {
                 let mut y = COMMUNITY_BASE_Y;
-                for amount in pot.individual_pots(&state.table.moneys) {
+                for amount in pot.individual_pots(&state.table.seats.moneys) {
                     stack_money_text!(main_pot_text = amount);
 
                     group.commands.print_chars(
@@ -834,13 +875,13 @@ fn holdem_update_and_render(
             if $bundle.selection.bet < minimum_raise_total {
                 $bundle.selection.bet = minimum_raise_total;
             }
-            if $bundle.selection.bet > state.table.moneys[current_i] {
-                $bundle.selection.bet = state.table.moneys[current_i];
+            if $bundle.selection.bet > state.table.seats.moneys[current_i] {
+                $bundle.selection.bet = state.table.seats.moneys[current_i];
             }
 
             let action_opt = match (
                 pot.has_folded(current),
-                &state.table.personalities[current_i]
+                &state.table.seats.personalities[current_i]
             ) {
                 (true, _) => Some(Action::Fold),
                 (false, Some(_personality)) => {
@@ -862,7 +903,7 @@ fn holdem_update_and_render(
                                     gen_action(
                                         rng,
                                         ActionSpec {
-                                            one_past_max_money: NonZeroMoney::MIN.saturating_add(state.table.moneys[current_i]),
+                                            one_past_max_money: NonZeroMoney::MIN.saturating_add(state.table.seats.moneys[current_i]),
                                             min_money_unit,
                                             minimum_raise_total,
                                         }
@@ -934,10 +975,10 @@ fn holdem_update_and_render(
                         },
                         Action::Call => {},
                         Action::Raise(raise_amount) => {
-                            if state.table.moneys[current_i]
+                            if state.table.seats.moneys[current_i]
                                 .checked_sub(raise_amount)
                                 .is_none() {
-                                action = Action::Raise(state.table.moneys[current_i]);
+                                action = Action::Raise(state.table.seats.moneys[current_i]);
                             }
                         },
                     }
@@ -947,7 +988,7 @@ fn holdem_update_and_render(
                 (false, None) => {
                     match group.ctx.hot {
                         HoldemMenu(menu_id) => {
-                            stack_money_text!(money_text = state.table.moneys[current_i]);
+                            stack_money_text!(money_text = state.table.seats.moneys[current_i]);
 
                             group.commands.draw_nine_slice(
                                 gfx::NineSlice::Button,
@@ -1356,14 +1397,14 @@ fn holdem_update_and_render(
                     Action::Call => {
                         match call_leftover {
                             Some(new_amount) => {
-                                state.table.moneys[current_i] = new_amount;
+                                state.table.seats.moneys[current_i] = new_amount;
                                 PotAction::Bet(call_remainder)
                             },
                             None => {
                                 let bet = PotAction::Bet(
-                                    state.table.moneys[current_i]
+                                    state.table.seats.moneys[current_i]
                                 );
-                                state.table.moneys[current_i] = 0;
+                                state.table.seats.moneys[current_i] = 0;
                                 bet
                             }
                         }
@@ -1377,17 +1418,17 @@ fn holdem_update_and_render(
                             pot.amount_for(current)
                         );
                         // The amount that would be leftover if the player was to call
-                        let call_leftover = state.table.moneys[current_i]
+                        let call_leftover = state.table.seats.moneys[current_i]
                             .checked_sub(call_remainder);
 
                         match call_leftover {
                             Some(_) => {
                                 match
-                                    state.table.moneys[current_i]
+                                    state.table.seats.moneys[current_i]
                                     .checked_sub(raise_amount)
                                 {
                                     Some(new_amount) => {
-                                        state.table.moneys[current_i] = new_amount;
+                                        state.table.seats.moneys[current_i] = new_amount;
                                         PotAction::Bet(raise_amount)
                                     },
                                     None => {
@@ -1396,7 +1437,7 @@ fn holdem_update_and_render(
                                             "player {} raised {} with only {}",
                                             $bundle.current,
                                             raise_amount,
-                                            state.table.moneys[current_i],
+                                            state.table.seats.moneys[current_i],
                                         );
                                         PotAction::Bet(raise_amount)
                                     }
@@ -1404,9 +1445,9 @@ fn holdem_update_and_render(
                             },
                             None => {
                                 let bet = PotAction::Bet(
-                                    state.table.moneys[current_i]
+                                    state.table.seats.moneys[current_i]
                                 );
-                                state.table.moneys[current_i] = 0;
+                                state.table.seats.moneys[current_i] = 0;
                                 bet
                             }
                         }
@@ -1420,7 +1461,7 @@ fn holdem_update_and_render(
                     $bundle.current = 0;
                 }
 
-                pot.round_outcome(&state.table.moneys)
+                pot.round_outcome(&state.table.seats.moneys)
             } else {
                 RoundOutcome::Undetermined
             }
@@ -1470,10 +1511,10 @@ fn holdem_update_and_render(
         () => {
             #[cfg(debug_assertions)]
             let expected_user_count = {
-                state.table.moneys
+                state.table.seats.moneys
                     .iter()
                     .zip(
-                        state.table.personalities
+                        state.table.seats.personalities
                             .iter()
                     )
                     .filter(|(&m, p)| m > 0 && p.is_none())
@@ -1486,39 +1527,39 @@ fn holdem_update_and_render(
                     = <_>::default();
 
                 let mut pair_index = 0;
-                for i in 0..state.table.moneys.len() {
-                    if state.table.moneys[i] == 0 {
+                for i in 0..state.table.seats.moneys.len() {
+                    if state.table.seats.moneys[i] == 0 {
                         continue
                     }
                     pairs[pair_index] = (
-                        state.table.moneys[i],
-                        state.table.personalities[i].take(),
+                        state.table.seats.moneys[i],
+                        state.table.seats.personalities[i].take(),
                     );
                     pair_index += 1;
                 }
 
-                for i in 0..state.table.moneys.len() {
-                    state.table.moneys[i] = 0;
-                    state.table.personalities[i] = None;
+                for i in 0..state.table.seats.moneys.len() {
+                    state.table.seats.moneys[i] = 0;
+                    state.table.seats.personalities[i] = None;
                 }
 
-                for i in 0..state.table.moneys.len() {
+                for i in 0..state.table.seats.moneys.len() {
                     let money = pairs[i].0;
                     if money == 0 {
                         break
                     }
                     let personality = pairs[i].1.take();
-                    state.table.moneys[i] = money;
-                    state.table.personalities[i] = personality;
+                    state.table.seats.moneys[i] = money;
+                    state.table.seats.personalities[i] = personality;
                 }
             }
 
             #[cfg(debug_assertions)]
             debug_assert_eq!(
-                state.table.moneys
+                state.table.seats.moneys
                     .iter()
                     .zip(
-                        state.table.personalities
+                        state.table.seats.personalities
                             .iter()
                     )
                     .filter(|(&m, p)| m > 0 && p.is_none())
@@ -1531,7 +1572,7 @@ fn holdem_update_and_render(
                 let mut remaining_player_count = 0;
 
                 // Assumes we just condensed the players
-                for money in state.table.moneys.iter() {
+                for money in state.table.seats.moneys.iter() {
                     if *money == 0 {
                         break
                     }
@@ -1545,17 +1586,17 @@ fn holdem_update_and_render(
 
             let mut only_cpus_left = true;
             // Assumes we just condensed the players
-            for i in 0..state.table.moneys.len() {
-                let money = state.table.moneys[i];
+            for i in 0..state.table.seats.moneys.len() {
+                let money = state.table.seats.moneys[i];
                 if money == 0 {
                     break
                 }
-                if state.table.personalities[i].is_none() {
+                if state.table.seats.personalities[i].is_none() {
                     only_cpus_left = false;
                 }
             }
 
-            if only_cpus_left && state.table.skip == SkipState::Skip {
+            if only_cpus_left && state.table.seats.skip == SkipState::Skip {
                 // TODO? Actually simulate the remaining turns, maybe with a timeout?
                 speaker.request_sfx(SFX::CardPlace);
                 state.table.state = <_>::default();
@@ -1579,7 +1620,7 @@ fn holdem_update_and_render(
                     },
                     Err(_) => {
                         // TODO show a winner screen with more winner info.
-                        if state.table.personalities[0].is_none() {
+                        if state.table.seats.personalities[0].is_none() {
                             println!("User wins!");
                         } else {
                             println!("Cpu player wins!");
@@ -1603,7 +1644,7 @@ fn holdem_update_and_render(
     macro_rules! award_now {
         ($hand_index: ident , $pot: expr) => {
             let i = usize::from($hand_index);
-            state.table.moneys[i] = state.table.moneys[i]
+            state.table.seats.moneys[i] = state.table.seats.moneys[i]
                 .saturating_add($pot.total());
 
             finish_round!();
@@ -1631,11 +1672,11 @@ fn holdem_update_and_render(
                 };
 
                 let (new_total, subbed) =
-                    match state.table.moneys[usize::from(index)].checked_sub(small_blind_amount.get()) {
+                    match state.table.seats.moneys[usize::from(index)].checked_sub(small_blind_amount.get()) {
                         Some(difference) => (difference, small_blind_amount.get()),
-                        None => (0, state.table.moneys[usize::from(index)]),
+                        None => (0, state.table.seats.moneys[usize::from(index)]),
                     };
-                state.table.moneys[usize::from(index)] = new_total;
+                state.table.seats.moneys[usize::from(index)] = new_total;
                 pot.push_bet(index, PotAction::Bet(subbed));
 
                 index += 1;
@@ -1644,11 +1685,11 @@ fn holdem_update_and_render(
                 }
 
                 let (new_total, subbed) =
-                    match state.table.moneys[usize::from(index)].checked_sub(large_blind_amount.get()) {
+                    match state.table.seats.moneys[usize::from(index)].checked_sub(large_blind_amount.get()) {
                         Some(difference) => (difference, large_blind_amount.get()),
-                        None => (0, state.table.moneys[usize::from(index)]),
+                        None => (0, state.table.seats.moneys[usize::from(index)]),
                     };
-                state.table.moneys[usize::from(index)] = new_total;
+                state.table.seats.moneys[usize::from(index)] = new_total;
                 pot.push_bet(index, PotAction::Bet(subbed));
             }
         }
@@ -1749,14 +1790,14 @@ fn holdem_update_and_render(
                 }
             ) {
                 for i in 0..player_count.usize() {
-                    state.table.moneys[i] = *starting_money;
+                    state.table.seats.moneys[i] = *starting_money;
                 }
 
-                state.table.personalities[0] = None;
+                state.table.seats.personalities[0] = None;
                 // TODO Make each element of this array user selectable too.
                 // Start at 1 to make the first player user controlled
                 for i in 1..player_count.usize() {
-                    state.table.personalities[i] = Some(CpuPersonality{});
+                    state.table.seats.personalities[i] = Some(CpuPersonality{});
                 }
 
                 let (hands, deck) = models::holdem::deal(rng, *player_count);
@@ -1976,7 +2017,7 @@ fn holdem_update_and_render(
 
             let awards: Awards = {
                 debug_assert_eq!(
-                    bundle.pot.eligibilities(&state.table.moneys)
+                    bundle.pot.eligibilities(&state.table.seats.moneys)
                             .map(|(_, n)| n)
                             .sum::<Money>(),
                     bundle.pot.total(),
@@ -1985,7 +2026,7 @@ fn holdem_update_and_render(
 
                 let mut awards = Awards::default();
 
-                for (eligibile_players, amount) in bundle.pot.eligibilities(&state.table.moneys) {
+                for (eligibile_players, amount) in bundle.pot.eligibilities(&state.table.seats.moneys) {
                     let mut winner_count = 0;
                     let mut winners = [
                         (0, evaluate::Eval::WORST);
@@ -2166,7 +2207,7 @@ fn holdem_update_and_render(
                     ..submit_rect
                 };
 
-                let skip_text: &[u8] = match state.table.skip {
+                let skip_text: &[u8] = match state.table.seats.skip {
                     SkipState::Skip => b"skip cpu only",
                     SkipState::Watch => b"watch cpu only",
                 };
@@ -2201,7 +2242,7 @@ fn holdem_update_and_render(
             ) {
                 for (i, pots) in awards.iter().enumerate() {
                     for Award{ amount, .. } in pots {
-                        state.table.moneys[i] = state.table.moneys[i].saturating_add(*amount);
+                        state.table.seats.moneys[i] = state.table.seats.moneys[i].saturating_add(*amount);
                     }
                 }
 
@@ -2211,15 +2252,15 @@ fn holdem_update_and_render(
                     SkipRemainderOfGameSelect => {
                         match input.dir_pressed_this_frame() {
                             Some(Dir::Up) => {
-                                state.table.skip =
-                                    match state.table.skip {
+                                state.table.seats.skip =
+                                    match state.table.seats.skip {
                                         SkipState::Skip => SkipState::Watch,
                                         SkipState::Watch => SkipState::Skip,
                                     };
                             },
                             Some(Dir::Down) => {
-                                state.table.skip =
-                                    match state.table.skip {
+                                state.table.seats.skip =
+                                    match state.table.seats.skip {
                                         SkipState::Skip => SkipState::Watch,
                                         SkipState::Watch => SkipState::Skip,
                                     };

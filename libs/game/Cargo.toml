@@ -1,6 +1,6 @@
 [package]
 name = "game"
-version = "0.2.0" # TODO setup auto-incrementing on push
+version = "0.2.1" # TODO setup auto-incrementing on push
 authors = ["Ryan1729 <Ryan1729@gmail.com>"]
 edition = "2021"
 

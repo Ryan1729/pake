@@ -9,7 +9,7 @@ pub mod probability {
 
 
 pub mod holdem {
-    use crate::probability::{FIFTY_PERCENT, Probability};
+    use crate::probability::{Probability};
     use models::{ALL_CARDS, DECK_SIZE, holdem::Hand};
 
     pub const ALL_SORTED_HANDS_LEN: usize = 1326;
