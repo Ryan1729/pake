@@ -22,7 +22,7 @@ impl State {
         // not the macro.
         features::log(&format!("{:?}", seed));
 
-        let mut game_state = game::State::new(seed);
+        let game_state = game::State::new(seed);
 
         Self {
             game_state,

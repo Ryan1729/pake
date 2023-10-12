@@ -362,7 +362,6 @@ impl Commands {
         y: unscaled::Y,
         colour: PaletteIndex
     ) {
-        type Inner = sprite::Inner;
         self.commands.push(
             Command {
                 sprite_xy: sprite::XY {

@@ -100,6 +100,32 @@ pub enum ModeName {
     AceyDeucey
 }
 
+impl ModeName {
+    fn text(self) -> &'static str {
+        use ModeName::*;
+        match self {
+            Holdem => "hold'em",
+            AceyDeucey => "acey-deucey",
+        }
+    }
+
+    fn up(&mut self) {
+        use ModeName::*;
+        *self = match self {
+            Holdem => AceyDeucey,
+            AceyDeucey => Holdem,
+        };
+    }
+
+    fn down(&mut self) {
+        use ModeName::*;
+        *self = match self {
+            Holdem => AceyDeucey,
+            AceyDeucey => Holdem,
+        };
+    }
+}
+
 #[derive(Clone)]
 pub enum Mode {
     Title(ModeName),
@@ -126,7 +152,7 @@ impl State {
         //let seed = [177, 142, 173, 15, 242, 60, 217, 65, 49, 80, 175, 162, 108, 73, 4, 62];
         // 22 Players, User dealt a pair of Aces, wins with Aces over Queens.
         // let seed = [148, 99, 192, 160, 91, 61, 217, 65, 108, 157, 212, 200, 23, 73, 4, 62];
-        let mut rng = xs::from_seed(seed);
+        let rng = xs::from_seed(seed);
 
         State {
             rng,
@@ -154,6 +180,7 @@ mod ui {
         #[default]
         Zero,
         TitleBeginButton,
+        GameSelect,
         BackToTitleScreen,
         Submit,
         PlayerCountSelect,
@@ -309,17 +336,29 @@ pub fn update_and_render(
     let mode = &mut state.mode;
     match mode {
         Mode::Title(mode_name) => {
-            let mode_name = *mode_name;
-            title_update_and_render(
+            let title_cmd = title_update_and_render(
                 commands,
                 TitleState {
-                    mode,
                     ctx: &mut state.ctx,
                     mode_name,
                 },
                 input,
                 speaker,
             );
+
+            match title_cmd {
+                TitleCmd::NoOp => {},
+                TitleCmd::StartMode(name) => {
+                    *mode = match name {
+                        ModeName::Holdem => {
+                            Mode::Holdem(<_>::default())
+                        },
+                        ModeName::AceyDeucey => {
+                            Mode::AceyDeucey(<_>::default())
+                        },
+                    };
+                },
+            }
         }
         Mode::Holdem(table) => {
             cmd = holdem_update_and_render(
@@ -333,7 +372,7 @@ pub fn update_and_render(
                 speaker,
             );
         }
-        Mode::AceyDeucey(table) => {
+        Mode::AceyDeucey(_table) => {
             todo!();
         }
     }
@@ -347,9 +386,13 @@ pub fn update_and_render(
 }
 
 struct TitleState<'state> {
-    mode: &'state mut Mode,
     ctx: &'state mut ui::Context,
-    mode_name: ModeName,
+    mode_name: &'state mut ModeName,
+}
+
+enum TitleCmd {
+    NoOp,
+    StartMode(ModeName),
 }
 
 fn title_update_and_render(
@@ -357,7 +400,9 @@ fn title_update_and_render(
     state: TitleState<'_>,
     input: Input,
     speaker: &mut Speaker,
-) {
+) -> TitleCmd {
+    let mut cmd = TitleCmd::NoOp;
+
     macro_rules! new_group {
         () => {
             &mut ui::Group {
@@ -423,30 +468,55 @@ fn title_update_and_render(
     // TODO in debug and/or a feature only, take a CLI arg or similar to
     // select a mode and skip the title screen, without user input
 
-    let w = unscaled::W(50);
-    let h = unscaled::H(50);
+    let button_w = unscaled::W(50);
+    let button_h = unscaled::H(50);
+
+    let base_x = unscaled::X(0) + ((command::WIDTH_W) - unscaled::W(150)) / 2;
+    let base_y = unscaled::Y(0) + command::HEIGHT_H - (button_h * 2);
+
+    let game_select_rect = unscaled::Rect {
+        x: base_x,
+        y: base_y,
+        w: unscaled::W(50),
+        h: unscaled::H(50),
+    };
+
+    {
+        let game_select_text = state.mode_name.text().as_bytes();
+
+        let xy = gfx::center_line_in_rect(
+            game_select_text.len() as _,
+            game_select_rect,
+        );
+
+        group.commands.print_chars(
+            game_select_text,
+            xy.x,
+            xy.y,
+            TEXT
+        );
+    }
+
+    ui::draw_quick_select(
+        group,
+        game_select_rect,
+        GameSelect,
+    );
 
     if do_button(
         group,
         ButtonSpec {
             id: TitleBeginButton,
             rect: unscaled::Rect {
-                x: unscaled::X(0) + ((command::WIDTH_W) - w) / 2,
-                y: unscaled::Y(0) + command::HEIGHT_H - (h * 2),
-                w,
-                h,
+                x: base_x + game_select_rect.w + unscaled::W(50),
+                y: base_y,
+                w: button_w,
+                h: button_h,
             },
             text: b"begin",
         }
     ) {
-        *state.mode = match state.mode_name {
-            ModeName::Holdem => {
-                Mode::Holdem(<_>::default())
-            },
-            ModeName::AceyDeucey => {
-                Mode::AceyDeucey(<_>::default())
-            },
-        };
+        cmd = TitleCmd::StartMode(*state.mode_name);
     }
 
     const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -458,9 +528,41 @@ fn title_update_and_render(
         TEXT
     );
 
-    if let Zero = group.ctx.hot {
-        group.ctx.set_next_hot(TitleBeginButton);
+    match group.ctx.hot {
+        GameSelect => {
+            match input.dir_pressed_this_frame() {
+                Some(Dir::Up) => {
+                    state.mode_name.up();
+                }
+                Some(Dir::Down) => {
+                    state.mode_name.down();
+                }
+                Some(Dir::Left)
+                | Some(Dir::Right) => {
+                    group.ctx.set_next_hot(TitleBeginButton);
+                }
+                None => {}
+            }
+        }
+        TitleBeginButton => {
+            match input.dir_pressed_this_frame() {
+                Some(Dir::Left)
+                | Some(Dir::Right) => {
+                    group.ctx.set_next_hot(GameSelect);
+                }
+                Some(Dir::Up)
+                | Some(Dir::Down)
+                | None => {}
+            }
+        }
+        _ => {}
     }
+
+    if let Zero = group.ctx.hot {
+        group.ctx.set_next_hot(GameSelect);
+    }
+
+    cmd
 }
 
 struct HoldemState<'state> {
@@ -921,7 +1023,7 @@ fn holdem_update_and_render(
                                 hand,
                             );
 
-                            let mut other_hands = ALL_SORTED_HANDS.iter()
+                            let other_hands = ALL_SORTED_HANDS.iter()
                                 .filter(|h| {
                                     let is_already_used =
                                     h[0] == hand[0]
@@ -953,7 +1055,7 @@ fn holdem_update_and_render(
                                         equal_count += 1;
                                     },
                                     Greater => {
-                                        below_count += 1;
+                                        above_count += 1;
                                     },
                                 }
                             }
@@ -1008,7 +1110,7 @@ fn holdem_update_and_render(
                             }
 
                             let player_action_opt = {
-                                let mut x = MENU_RECT.x + SPACING_W * 10;
+                                let x = MENU_RECT.x + SPACING_W * 10;
                                 let y = MENU_RECT.y + SPACING_H;
 
                                 let action_kind_rect = unscaled::Rect {
@@ -1333,7 +1435,7 @@ fn holdem_update_and_render(
                                             colour_index
                                         );
 
-                                        let mut hand_text = models::holdem::short_hand_text(hand);
+                                        let hand_text = models::holdem::short_hand_text(hand);
 
                                         group.commands.print_chars(
                                             &hand_text,
@@ -1365,7 +1467,7 @@ fn holdem_update_and_render(
                     {
                         let x = unscaled::X(0) + unscaled::Inner::from(models::RANK_COUNT + 1) * chart_block::WIDTH + SPACING_W;
                         let mut y = unscaled::Y(0) + SPACING_H;
-                        for ChartThreshold { colour, threshold, text } in CHART_THRESHOLDS {
+                        for ChartThreshold { colour, text, .. } in CHART_THRESHOLDS {
                             group.commands.draw_chart_block(
                                 x,
                                 y,
@@ -1412,7 +1514,7 @@ fn holdem_update_and_render(
                     Action::Raise(raise_amount) => {
                         // The total bet needed to call
                         let call_amount = pot.call_amount();
-                        let minimum_raise_total = call_amount + min_money_unit.get();
+
                         // The amount extra needed to call
                         let call_remainder = call_amount.saturating_sub(
                             pot.amount_for(current)
