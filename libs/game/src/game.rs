@@ -33,50 +33,7 @@ use shared_game_types::{ModeCmd};
 
 mod holdem;
 
-mod acey_deucey {
-    use gfx::{Commands};
-    use models::{Card, ALL_CARDS, Money, NonZeroMoney};
-    use platform_types::{Button, Dir, Input, PaletteIndex, Speaker, SFX, command, unscaled, TEXT};
-
-    use xs::Xs;
-
-    use crate::shared_game_types::{CpuPersonality, Personality, ModeCmd, SkipState};
-    use crate::ui::{self, ButtonSpec, Id::*, do_button};
-
-    // TODO better, more motivated value
-    const MAX_PLAYERS: u8 = 6;
-
-    #[derive(Clone, Default)]
-    pub struct Seats {
-        moneys: [Money; MAX_PLAYERS as usize],
-        personalities: [Personality; MAX_PLAYERS as usize],
-        skip: SkipState,
-    }
-
-    #[derive(Clone, Default)]
-    pub struct Table {
-        seats: Seats,
-    }
-
-    pub struct State<'state> {
-        pub rng: &'state mut Xs,
-        pub ctx: &'state mut ui::Context,
-        pub table: &'state mut Table
-    }
-
-    pub fn update_and_render(
-        commands: &mut Commands,
-        state: State<'_>,
-        input: Input,
-        speaker: &mut Speaker,
-    ) -> ModeCmd {
-        let mut cmd = ModeCmd::NoOp;
-
-        cmd = ModeCmd::BackToTitleScreen;
-
-        cmd
-    }
-}
+mod acey_deucey;
 
 #[derive(Clone, Copy, Default)]
 pub enum ModeName {
