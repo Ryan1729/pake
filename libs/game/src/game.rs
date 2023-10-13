@@ -1,13 +1,10 @@
 #![allow(unused_imports)]
 
-use gfx::{CHAR_SPACING_H, CHAR_SPACING_W, SPACING_H, SPACING_W, chart_block, Commands, Highlighting::{Highlighted, Plain}};
-use look_up::{holdem::{ALL_SORTED_HANDS, hand_win_probability}, probability::{FIFTY_PERCENT, SEVENTY_FIVE_PERCENT, EIGHTY_SEVEN_POINT_FIVE_PERCENT, Probability}};
-use models::{Card, ALL_CARDS, Money, NonZeroMoney, holdem::{MAX_PLAYERS, MAX_POTS, Action, ActionKind, ActionSpec, AllowedKindMode, CommunityCards, Deck, Facing, FullBoard, Hand, HandIndex, HandLen, Hands, PerPlayer, Pot, PotAction, RoundOutcome, gen_action, gen_deck, gen_hand_index}};
-use platform_types::{Button, Dir, Input, PaletteIndex, Speaker, SFX, command, unscaled, TEXT};
+use gfx::{CHAR_SPACING_W, SPACING_H, Commands};
+use models::{holdem::{HandIndex}};
+use platform_types::{Button, Dir, Input, Speaker, SFX, command, unscaled, TEXT};
 
 use xs::{Xs, Seed};
-
-use std::io::Write;
 
 // TODO? should this just be in models?
 mod shared_game_types {
@@ -32,12 +29,12 @@ mod shared_game_types {
         BackToTitleScreen
     }
 }
-use shared_game_types::{Personality, ModeCmd};
+use shared_game_types::{ModeCmd};
 
 mod holdem;
 
 mod acey_deucey {
-    use gfx::{CHAR_SPACING_H, CHAR_SPACING_W, SPACING_H, SPACING_W, chart_block, Commands, Highlighting::{Highlighted, Plain}};
+    use gfx::{Commands};
     use models::{Card, ALL_CARDS, Money, NonZeroMoney};
     use platform_types::{Button, Dir, Input, PaletteIndex, Speaker, SFX, command, unscaled, TEXT};
 
