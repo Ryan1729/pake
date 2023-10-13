@@ -676,6 +676,21 @@ pub const FONT_FLIP: u8 = 128;
 
 pub type TextLength = unscaled::Inner;
 
+pub fn pre_nul_len(
+    text: &[u8],
+) -> TextLength {
+    let mut len = 0;
+    for i in 0..text.len() as TextLength {
+        // If it's max length, this being outside the `if`
+        // ensures the length is accurate.
+        len = i;
+        if text[usize::from(i)] == b'\0' {
+            break;
+        }
+    }
+    len
+}
+
 pub fn center_line_in_rect(
     text_length: TextLength,
     rect: unscaled::Rect

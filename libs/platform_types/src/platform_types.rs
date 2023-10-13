@@ -1166,3 +1166,5 @@ pub const PURPLE_INDEX: PaletteIndex = 4;
 pub const GREY_INDEX: PaletteIndex = 5;
 pub const WHITE_INDEX: PaletteIndex = 6;
 pub const BLACK_INDEX: PaletteIndex = 7;
+
+pub const TEXT: PaletteIndex = 6;
