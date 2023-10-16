@@ -72,6 +72,51 @@ pub const fn get_rank(card: Card) -> Rank {
     card % RANK_COUNT
 }
 
+type CardIndex = u8;
+
+#[derive(Clone, Debug)]
+pub struct Deck {
+    cards: [Card; DECK_SIZE as usize],
+    index: CardIndex,
+}
+
+impl Default for Deck {
+    fn default() -> Self {
+        Self {
+            cards: [0; DECK_SIZE as usize],
+            index: 0,
+        }
+    }
+}
+
+impl Deck {
+    pub fn draw(&mut self) -> Option<Card> {
+        if self.index >= DECK_SIZE {
+            None
+        } else {
+            let output = Some(self.cards[self.index as usize]);
+
+            self.index += 1;
+
+            output
+        }
+    }
+
+    pub fn burn(&mut self) {
+        self.draw();
+    }
+}
+
+pub fn gen_deck(rng: &mut Xs) -> Deck {
+    let mut output = Deck::default();
+    for i in 1..DECK_SIZE {
+        output.cards[i as usize] = i;
+    }
+    xs::shuffle(rng, &mut output.cards);
+
+    output
+}
+
 pub type Money = u32;
 pub type NonZeroMoney = NonZeroU32;
 
@@ -956,88 +1001,6 @@ pub mod holdem {
         (hands, deck)
     }
 
-    type CardIndex = u8;
-
-    #[derive(Clone, Debug)]
-    pub struct Deck {
-        cards: [Card; DECK_SIZE as usize],
-        index: CardIndex,
-    }
-
-    impl Default for Deck {
-        fn default() -> Self {
-            Self {
-                cards: [0; DECK_SIZE as usize],
-                index: 0,
-            }
-        }
-    }
-
-    impl Deck {
-        pub fn draw(&mut self) -> Option<Card> {
-            if self.index >= DECK_SIZE {
-                None
-            } else {
-                let output = Some(self.cards[self.index as usize]);
-
-                self.index += 1;
-
-                output
-            }
-        }
-
-        pub fn burn(&mut self) {
-            self.draw();
-        }
-
-        pub fn deal_community_cards(&mut self) -> Option<CommunityCards> {
-            self.burn();
-            let [Some(card1), Some(card2), Some(card3)] =
-                [self.draw(), self.draw(), self.draw()]
-                else {
-                    return None
-                };
-            Some(CommunityCards::Flop([card1, card2, card3]))
-        }
-
-        pub fn deal_to_community_cards(
-            &mut self,
-            community_cards: &mut CommunityCards
-        ) {
-            match *community_cards {
-                CommunityCards::Flop(flop) => {
-                    self.burn();
-                    if let Some(turn) = self.draw() {
-                        *community_cards = CommunityCards::Turn(flop, turn);
-                    } else {
-                        debug_assert!(false, "Ran out of cards for turn!");
-                    }
-                },
-                CommunityCards::Turn(flop, turn) => {
-                    self.burn();
-                    if let Some(river) = self.draw() {
-                        *community_cards = CommunityCards::River(flop, turn, river);
-                    } else {
-                        debug_assert!(false, "Ran out of cards for river!");
-                    }
-                }
-                CommunityCards::River(..) => {
-                    // Nothing left to deal out.
-                }
-            }
-        }
-    }
-
-    pub fn gen_deck(rng: &mut Xs) -> Deck {
-        let mut output = Deck::default();
-        for i in 1..DECK_SIZE {
-            output.cards[i as usize] = i;
-        }
-        xs::shuffle(rng, &mut output.cards);
-
-        output
-    }
-
     pub type Flop = [Card; 3];
 
     #[derive(Clone, Copy)]
@@ -1071,6 +1034,43 @@ pub mod holdem {
                     || c3 == card
                     || c4 == card
                     || c5 == card,
+            }
+        }
+    }
+
+    pub fn deal_community_cards(deck: &mut Deck) -> Option<CommunityCards> {
+        deck.burn();
+        let [Some(card1), Some(card2), Some(card3)] =
+            [deck.draw(), deck.draw(), deck.draw()]
+            else {
+                return None
+            };
+        Some(CommunityCards::Flop([card1, card2, card3]))
+    }
+
+    pub fn deal_to_community_cards(
+        deck: &mut Deck,
+        community_cards: &mut CommunityCards
+    ) {
+        match *community_cards {
+            CommunityCards::Flop(flop) => {
+                deck.burn();
+                if let Some(turn) = deck.draw() {
+                    *community_cards = CommunityCards::Turn(flop, turn);
+                } else {
+                    debug_assert!(false, "Ran out of cards for turn!");
+                }
+            },
+            CommunityCards::Turn(flop, turn) => {
+                deck.burn();
+                if let Some(river) = deck.draw() {
+                    *community_cards = CommunityCards::River(flop, turn, river);
+                } else {
+                    debug_assert!(false, "Ran out of cards for river!");
+                }
+            }
+            CommunityCards::River(..) => {
+                // Nothing left to deal out.
             }
         }
     }

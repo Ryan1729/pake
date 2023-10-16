@@ -254,6 +254,45 @@ mod ui {
             rect.y + rect.h - chevron::HEIGHT,
         );
     }
+
+    #[macro_export]
+    macro_rules! _stack_money_text {
+        ($text:ident = $money: expr) => {
+            use std::io::Write;
+            let mut money_text = [0 as u8; 20];
+            money_text[0] = b'$';
+            let _cant_actually_fail = write!(
+                &mut money_text[1..],
+                "{}",
+                $money
+            );
+
+            let $text = money_text;
+        }
+    }
+    pub use _stack_money_text as stack_money_text;
+
+    #[macro_export]
+    macro_rules! _draw_money_in_rect {
+        ($group:ident, $money: expr, $rect: expr) => {
+            $crate::ui::stack_money_text!(text = $money);
+
+            {
+                let xy = gfx::center_line_in_rect(
+                    gfx::pre_nul_len(&text),
+                    $rect,
+                );
+                $group.commands.print_chars(
+                    &text,
+                    xy.x,
+                    xy.y,
+                    TEXT
+                );
+            }
+        }
+    }
+
+    pub use _draw_money_in_rect as draw_money_in_rect;
 }
 
 use ui::{ButtonSpec, Id::*, do_button};

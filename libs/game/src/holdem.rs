@@ -1,6 +1,6 @@
 use gfx::{CHAR_SPACING_H, CHAR_SPACING_W, SPACING_H, SPACING_W, chart_block, Commands, pre_nul_len};
 use look_up::{holdem::{ALL_SORTED_HANDS, hand_win_probability}, probability::{FIFTY_PERCENT, SEVENTY_FIVE_PERCENT, EIGHTY_SEVEN_POINT_FIVE_PERCENT, Probability}};
-use models::{Money, NonZeroMoney, holdem::{MAX_PLAYERS, MAX_POTS, Action, ActionKind, ActionSpec, AllowedKindMode, CommunityCards, Deck, Facing, FullBoard, Hand, HandIndex, HandLen, Hands, PerPlayer, Pot, PotAction, RoundOutcome, gen_action, gen_hand_index}};
+use models::{Deck, Money, NonZeroMoney, holdem::{MAX_PLAYERS, MAX_POTS, Action, ActionKind, ActionSpec, AllowedKindMode, CommunityCards, Facing, FullBoard, Hand, HandIndex, HandLen, Hands, PerPlayer, Pot, PotAction, RoundOutcome, gen_action, gen_hand_index}};
 use platform_types::{Button, Dir, Input, PaletteIndex, Speaker, SFX, command, unscaled, TEXT};
 
 use xs::Xs;
@@ -124,6 +124,7 @@ pub fn update_and_render(
 
     macro_rules! stack_money_text {
         ($text:ident = $money: expr) => {
+            use std::io::Write;
             let mut money_text = [0 as u8; 20];
             money_text[0] = b'$';
             let _cant_actually_fail = write!(
@@ -990,7 +991,7 @@ pub fn update_and_render(
 
                             y += chart_block::HEIGHT + CHAR_SPACING_H;
                         }
-                        
+
                     }
 
                     if group.input.pressed_this_frame(Button::B) {
@@ -1502,10 +1503,10 @@ pub fn update_and_render(
             match outcome {
                 RoundOutcome::Undetermined => {},
                 RoundOutcome::AdvanceToNext => {
-                    let community_cards = bundle
-                        .deck
-                        .deal_community_cards()
-                        .expect("Deck ran out!?");
+                    let community_cards =
+                        models::holdem::deal_community_cards(
+                            &mut bundle.deck,
+                        ).expect("Deck ran out!?");
                     next_bundle!(
                         new_bundle =
                             bundle.hands.clone(),
