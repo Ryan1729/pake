@@ -187,7 +187,7 @@ pub fn update_and_render(
                         );
 
                         i += 1;
-                        if i >= 22 {
+                        if i >= models::holdem::MAX_PLAYERS {
                             break 'outer;
                         }
                     }

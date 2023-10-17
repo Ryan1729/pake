@@ -164,16 +164,23 @@ pub struct Seats {
 type Pot = Money;
 
 #[derive(Clone)]
+pub struct StateBundle {
+    pub deck: Deck,
+    pub posts: Posts,
+    pub current: HandIndex,
+    pub pot: Pot,
+    pub player_count: PlayerCount,
+}
+
+#[derive(Clone)]
 pub enum TableState {
     Undealt { player_count: PlayerCount, starting_money: Money },
     DealtPosts {
-        posts: Posts,
-        pot: Pot,
+        bundle: StateBundle,
     },
     Reveal {
-        posts: Posts,
+        bundle: StateBundle,
         third: Card,
-        pot: Pot,
     },
 }
 
@@ -226,6 +233,28 @@ pub fn update_and_render(
     );
 
     let mut cmd = ModeCmd::NoOp;
+
+    macro_rules! do_acey_deucey {
+        ($group: ident $(,)? $bundle: ident , $third_opt: expr) => {
+            let group = $group;
+
+            let player_count = $bundle.player_count;
+            for i in 0..player_count.u8() {
+                use unscaled::Inner;
+
+                let money = state.table.seats.moneys[i as usize];
+
+                let money_rect = unscaled::Rect {
+                    x: unscaled::X(150),
+                    y: unscaled::Y(Inner::from(i) * 50),
+                    w: unscaled::W(50),
+                    h: unscaled::H(100),
+                };
+
+                draw_money_in_rect!(group, money, money_rect);
+            }
+        }
+    }
 
     match &mut state.table.state {
         Undealt {
@@ -321,7 +350,7 @@ pub fn update_and_render(
                     text: b"submit",
                 }
             ) {
-
+                let player_count = *player_count;
                 let mut pot: Pot = 0;
 
                 for i in 0..player_count.usize() {
@@ -340,12 +369,17 @@ pub fn update_and_render(
 
                 let (posts, deck) = deal(rng);
 
-                let dealer = gen_hand_index(rng, *player_count);
+                let current = gen_hand_index(rng, player_count);
 
                 speaker.request_sfx(SFX::CardPlace);
                 state.table.state = DealtPosts {
-                    posts,
-                    pot,
+                    bundle: StateBundle {
+                        deck,
+                        posts,
+                        current,
+                        pot,
+                        player_count
+                    }
                 };
             } else {
                 let menu = [BackToTitleScreen, PlayerCountSelect, StartingMoneySelect, Submit];
@@ -418,8 +452,24 @@ pub fn update_and_render(
                 }
             }
         },
-        DealtPosts { posts, pot, } => {},
-        Reveal { posts, third, pot, } => {},
+        DealtPosts { bundle, } => {
+            let group = new_group!();
+
+            do_acey_deucey!(
+                group,
+                bundle,
+                None
+            );
+        },
+        Reveal { bundle, third } => {
+            let group = new_group!();
+
+            do_acey_deucey!(
+                group,
+                bundle,
+                Some(third)
+            );
+        },
     }
 
 
