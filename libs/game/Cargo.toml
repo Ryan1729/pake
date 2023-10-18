@@ -24,3 +24,6 @@ path = "../platform_types"
 
 [dependencies.xs]
 path = "../xs"
+
+[features]
+skip-to = []

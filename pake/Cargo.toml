@@ -22,3 +22,4 @@ path = "../libs/platform_types"
 default = ["platform/non-web-sound"]
 invariant-checking = ["app/invariant-checking"]
 logging = ["app/logging"]
+skip-to = ["app/skip-to"]

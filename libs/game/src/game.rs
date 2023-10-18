@@ -448,9 +448,6 @@ fn title_update_and_render(
         );
     }
 
-    // TODO in debug and/or a feature only, take a CLI arg or similar to
-    // select a mode and skip the title screen, without user input
-
     let button_w = unscaled::W(50);
     let button_h = unscaled::H(50);
 
@@ -543,6 +540,38 @@ fn title_update_and_render(
 
     if let Zero = group.ctx.hot {
         group.ctx.set_next_hot(GameSelect);
+    }
+
+    #[cfg(feature = "skip-to")]
+    {
+        let mut args = std::env::args();
+        args.next(); // exe name
+
+        while let Some(arg) = args.next() {
+            match arg.as_str() {
+                // select a mode and skip the title screen, without user input
+                "--skip-to" => {
+                    if let Some(arg) = args.next() {
+                        match arg.as_str() {
+                            "holdem" => {
+                                cmd = TitleCmd::StartMode(ModeName::Holdem);
+                            }
+                            "acey-deucey" => {
+                                cmd = TitleCmd::StartMode(ModeName::AceyDeucey);
+                            }
+                            arg => {
+                                panic!("Unrecognized arg for skip-to: {arg:?}");
+                            }
+                        }
+                    } else {
+                        panic!("--skip-to needs an addtional arg!");
+                    }
+                }
+                arg => {
+                    panic!("Unrecognized arg: {arg:?}");
+                }
+            }
+        }
     }
 
     cmd

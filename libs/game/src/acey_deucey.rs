@@ -1,11 +1,10 @@
-use gfx::{Commands};
+use gfx::{Commands, SPACING_W, SPACING_H};
 use models::{Card, ALL_CARDS, Deck, Money, NonZeroMoney, gen_deck};
 use platform_types::{Button, Dir, Input, PaletteIndex, Speaker, SFX, command, unscaled, TEXT};
 
 use xs::Xs;
 
 use crate::shared_game_types::{CpuPersonality, Personality, ModeCmd, SkipState};
-#[macro_use]
 use crate::ui::{self, draw_money_in_rect, ButtonSpec, Id::*, do_button};
 
 type Posts = [Card; 2];
@@ -237,22 +236,39 @@ pub fn update_and_render(
     macro_rules! do_acey_deucey {
         ($group: ident $(,)? $bundle: ident , $third_opt: expr) => {
             let group = $group;
-
             let player_count = $bundle.player_count;
+            let pot = $bundle.pot;
+
+
             for i in 0..player_count.u8() {
                 use unscaled::Inner;
 
                 let money = state.table.seats.moneys[i as usize];
 
+                let w = unscaled::W(25);
+                let h = unscaled::H(15);
+
                 let money_rect = unscaled::Rect {
-                    x: unscaled::X(150),
-                    y: unscaled::Y(Inner::from(i) * 50),
-                    w: unscaled::W(50),
-                    h: unscaled::H(100),
+                    x: unscaled::X(0) + SPACING_W,
+                    y: unscaled::Y(0) + SPACING_H + h * Inner::from(i),
+                    w,
+                    h,
                 };
 
                 draw_money_in_rect!(group, money, money_rect);
             }
+
+            let w = unscaled::W(50);
+            let h = unscaled::H(20);
+
+            let pot_rect = unscaled::Rect {
+                x: unscaled::X(0) + ((command::WIDTH_W/2) - (w/2)),
+                y: unscaled::Y(0) + SPACING_H,
+                w,
+                h,
+            };
+
+            draw_money_in_rect!(group, pot, pot_rect);
         }
     }
 
