@@ -679,6 +679,12 @@ pub mod command {
     pub const WIDTH_W: unscaled::W = unscaled::W(WIDTH);
     pub const HEIGHT_H: unscaled::H = unscaled::H(HEIGHT);
 
+    pub const MID_W: unscaled::W = unscaled::W(WIDTH / 2);
+    pub const MID_H: unscaled::H = unscaled::H(HEIGHT / 2);
+
+    pub const MID_X: unscaled::X = unscaled::X(WIDTH / 2);
+    pub const MID_Y: unscaled::Y = unscaled::Y(HEIGHT / 2);
+
     #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
     pub struct X(unscaled::X);
 

@@ -1,11 +1,11 @@
-use gfx::{Commands, SPACING_W, SPACING_H};
+use gfx::{card, Commands, SPACING_W, SPACING_H};
 use models::{Card, ALL_CARDS, Deck, Money, NonZeroMoney, gen_deck};
 use platform_types::{Button, Dir, Input, PaletteIndex, Speaker, SFX, command, unscaled, TEXT};
 
 use xs::Xs;
 
 use crate::shared_game_types::{CpuPersonality, Personality, ModeCmd, SkipState};
-use crate::ui::{self, draw_money_in_rect, ButtonSpec, Id::*, do_button};
+use crate::ui::{self, draw_money_in_rect, stack_money_text, ButtonSpec, Id::*, do_button};
 
 type Posts = [Card; 2];
 
@@ -162,6 +162,36 @@ pub struct Seats {
 
 type Pot = Money;
 
+#[derive(Copy, Clone, Debug, Default)]
+pub enum Action {
+    #[default]
+    Pass,
+    Bet(Money)
+}
+
+#[derive(Copy, Clone, Debug, Default, Eq, PartialEq)]
+pub enum ActionKind {
+    #[default]
+    Pass,
+    Bet,
+}
+
+impl ActionKind {
+    pub fn text(self) -> &'static [u8] {
+        use ActionKind::*;
+        match self {
+            Pass => b"pass",
+            Bet => b"bet",
+        }
+    }
+}
+
+#[derive(Clone, Default)]
+pub struct MenuSelection {
+    pub action_kind: ActionKind,
+    pub bet: Money,
+}
+
 #[derive(Clone)]
 pub struct StateBundle {
     pub deck: Deck,
@@ -169,6 +199,7 @@ pub struct StateBundle {
     pub current: HandIndex,
     pub pot: Pot,
     pub player_count: PlayerCount,
+    pub selection: MenuSelection,
 }
 
 #[derive(Clone)]
@@ -238,10 +269,15 @@ pub fn update_and_render(
             let group = $group;
             let player_count = $bundle.player_count;
             let pot = $bundle.pot;
+            let posts = $bundle.posts;
+            let current = $bundle.current;
+            let current_i = usize::from(current);
 
 
             for i in 0..player_count.u8() {
                 use unscaled::Inner;
+
+                // TODO if i == current { draw indicator }
 
                 let money = state.table.seats.moneys[i as usize];
 
@@ -262,13 +298,139 @@ pub fn update_and_render(
             let h = unscaled::H(20);
 
             let pot_rect = unscaled::Rect {
-                x: unscaled::X(0) + ((command::WIDTH_W/2) - (w/2)),
+                x: unscaled::X(0) + command::MID_W - (w/2),
                 y: unscaled::Y(0) + SPACING_H,
                 w,
                 h,
             };
 
             draw_money_in_rect!(group, pot, pot_rect);
+
+            group.commands.draw_card(
+                posts[0],
+                // Need an extra `card::WIDTH` because the sprite is drawn from the
+                // top left corner
+                command::MID_X - (card::WIDTH * 2 + card::WIDTH / 2),
+                command::MID_Y,
+            );
+
+            group.commands.draw_card(
+                posts[1],
+                command::MID_X + (card::WIDTH + card::WIDTH / 2),
+                command::MID_Y,
+            );
+
+            stack_money_text!(money_text = state.table.seats.moneys[current_i]);
+
+            const ACTION_KIND: ui::AceyDeuceyMenuId = 0;
+            const MONEY_AMOUNT: ui::AceyDeuceyMenuId = 1;
+            const SUBMIT: ui::AceyDeuceyMenuId = 2;
+            const MENU_KIND_ONE_PAST_MAX: ui::AceyDeuceyMenuId = 3;
+
+            const MENU_H: unscaled::H = unscaled::h_const_div(
+                command::HEIGHT_H,
+                6
+            );
+
+            const MENU_RECT: unscaled::Rect = unscaled::Rect {
+                x: unscaled::X(0),
+                y: unscaled::y_const_add_h(
+                    unscaled::Y(0),
+                    unscaled::h_const_sub(
+                        command::HEIGHT_H,
+                        MENU_H
+                    )
+                ),
+                w: command::WIDTH_W,
+                h: MENU_H,
+            };
+
+            group.commands.draw_nine_slice(
+                gfx::NineSlice::Button,
+                MENU_RECT
+            );
+
+            {
+                let x = MENU_RECT.x + SPACING_W;
+                let mut y = MENU_RECT.y + SPACING_H;
+                group.commands.print_chars(
+                    &money_text,
+                    x,
+                    y,
+                    TEXT
+                );
+                y += gfx::CHAR_LINE_ADVANCE;
+            }
+
+            let player_action_opt = {
+                let x = MENU_RECT.x + SPACING_W * 10;
+                let y = MENU_RECT.y + SPACING_H;
+
+                let action_kind_rect = unscaled::Rect {
+                    x,
+                    y,
+                    w: unscaled::W(50),
+                    h: MENU_RECT.h - SPACING_H * 2,
+                };
+
+                let action_kind_text = $bundle.selection.action_kind.text();
+
+                {
+                    let xy = gfx::center_line_in_rect(
+                        action_kind_text.len() as _,
+                        action_kind_rect,
+                    );
+                    group.commands.print_chars(
+                        action_kind_text,
+                        xy.x,
+                        xy.y,
+                        TEXT
+                    );
+                }
+
+                ui::draw_quick_select(
+                    group,
+                    action_kind_rect,
+                    AceyDeuceyMenu(ACTION_KIND),
+                );
+
+                let money_rect = unscaled::Rect {
+                    x: action_kind_rect.x + action_kind_rect.w,
+                    ..action_kind_rect
+                };
+
+                match $bundle.selection.action_kind {
+                    ActionKind::Bet => {
+                        draw_money_in_rect!(group, $bundle.selection.bet, money_rect);
+
+                        ui::draw_quick_select(
+                            group,
+                            money_rect,
+                            AceyDeuceyMenu(MONEY_AMOUNT),
+                        );
+                    }
+                    ActionKind::Pass => {}
+                }
+
+                if do_button(
+                    group,
+                    ButtonSpec {
+                        id: AceyDeuceyMenu(SUBMIT),
+                        rect: unscaled::Rect {
+                            x: action_kind_rect.x + action_kind_rect.w + action_kind_rect.w,
+                            ..action_kind_rect
+                        },
+                        text: b"submit",
+                    }
+                ) {
+                    Some(match $bundle.selection.action_kind {
+                        ActionKind::Pass => Action::Pass,
+                        ActionKind::Bet => Action::Bet($bundle.selection.bet),
+                    })
+                } else {
+                    None
+                }
+            };
         }
     }
 
@@ -394,7 +556,8 @@ pub fn update_and_render(
                         posts,
                         current,
                         pot,
-                        player_count
+                        player_count,
+                        selection: <_>::default(),
                     }
                 };
             } else {

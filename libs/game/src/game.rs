@@ -116,6 +116,7 @@ mod ui {
     }
 
     pub type HoldemMenuId = u8;
+    pub type AceyDeuceyMenuId = u8;
 
     #[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
     pub enum Id {
@@ -132,6 +133,7 @@ mod ui {
         HoldemChartButton,
         SkipRemainderOfGameSelect,
         ShowdownSubmit,
+        AceyDeuceyMenu(AceyDeuceyMenuId),
     }
 
     #[derive(Copy, Clone, Default, Debug)]
@@ -258,14 +260,16 @@ mod ui {
     #[macro_export]
     macro_rules! _stack_money_text {
         ($text:ident = $money: expr) => {
-            use std::io::Write;
             let mut money_text = [0 as u8; 20];
-            money_text[0] = b'$';
-            let _cant_actually_fail = write!(
-                &mut money_text[1..],
-                "{}",
-                $money
-            );
+            {
+                use std::io::Write;
+                money_text[0] = b'$';
+                let _cant_actually_fail = write!(
+                    &mut money_text[1..],
+                    "{}",
+                    $money
+                );
+            }
 
             let $text = money_text;
         }
