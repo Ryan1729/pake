@@ -243,7 +243,6 @@ pub mod holdem {
                 },
                 AllIn => Call,
             }
-            
         }
     }
 
@@ -656,7 +655,7 @@ pub mod holdem {
                 .sum()
         }
 
-        /// Returns the total that a player must have bet, in order to call 
+        /// Returns the total that a player must have bet, in order to call
         /// including previous bets. That is, the maxiumum amount bet by any player.
         pub fn call_amount(&self) -> Money {
             self.amounts()
