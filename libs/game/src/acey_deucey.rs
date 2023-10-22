@@ -282,13 +282,10 @@ pub fn update_and_render(
 
     macro_rules! do_acey_deucey {
         ($group: ident $(,)? $bundle: ident , $third_opt: expr) => {
-            let group = $group;
             let player_count = $bundle.player_count;
             let pot = $bundle.pot;
             let posts = $bundle.posts;
             let current = $bundle.current;
-            let current_i = usize::from(current);
-
 
             for i in 0..player_count.u8() {
                 use unscaled::Inner;
@@ -305,14 +302,21 @@ pub fn update_and_render(
                     h,
                 };
 
-                if i == current {
-                    group.commands.draw_nine_slice(
+                if let None = state.table.seats.personalities[i as usize] {
+                    $group.commands.draw_nine_slice(
                         gfx::NineSlice::Highlight,
                         money_rect,
                     );
                 }
 
-                draw_money_in_rect!(group, money, money_rect);
+                if i == current {
+                    $group.commands.draw_selected(
+                        money_rect.x + money_rect.w / 2,
+                        money_rect.y,
+                    );
+                }
+
+                draw_money_in_rect!($group, money, money_rect);
             }
 
             let w = unscaled::W(50);
@@ -325,9 +329,9 @@ pub fn update_and_render(
                 h,
             };
 
-            draw_money_in_rect!(group, pot, pot_rect);
+            draw_money_in_rect!($group, pot, pot_rect);
 
-            group.commands.draw_card(
+            $group.commands.draw_card(
                 posts[0],
                 // Need an extra `card::WIDTH` because the sprite is drawn from the
                 // top left corner
@@ -335,195 +339,77 @@ pub fn update_and_render(
                 command::MID_Y,
             );
 
-            group.commands.draw_card(
+            $group.commands.draw_card(
                 posts[1],
                 command::MID_X + (card::WIDTH + card::WIDTH / 2),
                 command::MID_Y,
             );
 
-            let action_opt = match &state.table.seats.personalities[current_i] {
-                Some(_) => {
-                    Some(Action::Bet(initial_ante_amount.get()))
+            if let Some(third) = $third_opt {
+                $group.commands.draw_card(
+                    third,
+                    command::MID_X - (card::WIDTH / 2),
+                    command::MID_Y,
+                );
+            }
+        }
+    }
+
+    macro_rules! next_bundle {
+        ($bundle: ident =
+            $deck: expr,
+            $current: expr,
+            $player_count: expr,
+            $pot: expr
+        ) => {
+            let mut deck = $deck;
+            let previous_index = $current;
+            let player_count = $player_count;
+            let pot = $pot;
+
+            let current = {
+                // Normally, the player after the dealer acts first.
+                let mut index = previous_index + 1;
+                if index >= player_count.u8() {
+                    index = 0;
                 }
-                None => {
-                    stack_money_text!(money_text = state.table.seats.moneys[current_i]);
+                index
+            };
 
-                    const ACTION_KIND: ui::AceyDeuceyMenuId = 0;
-                    const MONEY_AMOUNT: ui::AceyDeuceyMenuId = 1;
-                    const SUBMIT: ui::AceyDeuceyMenuId = 2;
-                    const MENU_KIND_ONE_PAST_MAX: ui::AceyDeuceyMenuId = 3;
+            let (posts, deck) = if let (Some(card1), Some(card2)) = (deck.draw(), deck.draw()) {
+                ([card1, card2], deck)
+            } else {
+                deal(rng)
+            };
 
-                    const MENU_H: unscaled::H = unscaled::h_const_div(
-                        command::HEIGHT_H,
-                        6
-                    );
-
-                    const MENU_RECT: unscaled::Rect = unscaled::Rect {
-                        x: unscaled::X(0),
-                        y: unscaled::y_const_add_h(
-                            unscaled::Y(0),
-                            unscaled::h_const_sub(
-                                command::HEIGHT_H,
-                                MENU_H
-                            )
-                        ),
-                        w: command::WIDTH_W,
-                        h: MENU_H,
-                    };
-
-                    group.commands.draw_nine_slice(
-                        gfx::NineSlice::Button,
-                        MENU_RECT
-                    );
-
-                    {
-                        let x = MENU_RECT.x + SPACING_W;
-                        let mut y = MENU_RECT.y + SPACING_H;
-                        group.commands.print_chars(
-                            &money_text,
-                            x,
-                            y,
-                            TEXT
-                        );
-                        y += gfx::CHAR_LINE_ADVANCE;
-                    }
-
-                    let player_action_opt = match group.ctx.hot {
-                        AceyDeuceyMenu(menu_id) => {
-                            let x = MENU_RECT.x + SPACING_W * 10;
-                            let y = MENU_RECT.y + SPACING_H;
-
-                            let action_kind_rect = unscaled::Rect {
-                                x,
-                                y,
-                                w: unscaled::W(50),
-                                h: MENU_RECT.h - SPACING_H * 2,
-                            };
-
-                            let action_kind_text = $bundle.selection.action_kind.text();
-
-                            {
-                                let xy = gfx::center_line_in_rect(
-                                    action_kind_text.len() as _,
-                                    action_kind_rect,
-                                );
-                                group.commands.print_chars(
-                                    action_kind_text,
-                                    xy.x,
-                                    xy.y,
-                                    TEXT
-                                );
-                            }
-
-                            ui::draw_quick_select(
-                                group,
-                                action_kind_rect,
-                                AceyDeuceyMenu(ACTION_KIND),
-                            );
-
-                            let money_rect = unscaled::Rect {
-                                x: action_kind_rect.x + action_kind_rect.w,
-                                ..action_kind_rect
-                            };
-
-                            match $bundle.selection.action_kind {
-                                ActionKind::Bet => {
-                                    draw_money_in_rect!(group, $bundle.selection.bet, money_rect);
-
-                                    ui::draw_quick_select(
-                                        group,
-                                        money_rect,
-                                        AceyDeuceyMenu(MONEY_AMOUNT),
-                                    );
-                                }
-                                ActionKind::Pass => {}
-                            }
-
-                            let player_action_opt = if do_button(
-                                group,
-                                ButtonSpec {
-                                    id: AceyDeuceyMenu(SUBMIT),
-                                    rect: unscaled::Rect {
-                                        x: action_kind_rect.x + action_kind_rect.w + action_kind_rect.w,
-                                        ..action_kind_rect
-                                    },
-                                    text: b"submit",
-                                }
-                            ) {
-                                Some(match $bundle.selection.action_kind {
-                                    ActionKind::Pass => Action::Pass,
-                                    ActionKind::Bet => Action::Bet($bundle.selection.bet),
-                                })
-                            } else {
-                                None
-                            };
-
-                            if group.input.pressed_this_frame(Button::LEFT) {
-                                let mut new_id = menu_id;
-                                new_id = match new_id.checked_sub(1) {
-                                    Some(new_id) => new_id,
-                                    None => MENU_KIND_ONE_PAST_MAX - 1,
-                                };
-
-                                if new_id == MONEY_AMOUNT
-                                && $bundle.selection.action_kind != ActionKind::Bet {
-                                    new_id = match new_id.checked_sub(1) {
-                                        Some(new_id) => new_id,
-                                        None => MENU_KIND_ONE_PAST_MAX - 1,
-                                    };
-                                }
-
-                                group.ctx.set_next_hot(AceyDeuceyMenu(new_id));
-                            } else if group.input.pressed_this_frame(Button::RIGHT) {
-                                let mut new_id = menu_id;
-                                new_id += 1;
-                                if new_id >= MENU_KIND_ONE_PAST_MAX {
-                                    new_id = 0;
-                                }
-
-                                if new_id == MONEY_AMOUNT
-                                && $bundle.selection.action_kind != ActionKind::Bet {
-                                    new_id += 1;
-                                    if new_id >= MENU_KIND_ONE_PAST_MAX {
-                                        new_id = 0;
-                                    }
-                                }
-
-                                group.ctx.set_next_hot(AceyDeuceyMenu(new_id));
-                            } else {
-                                match menu_id {
-                                    ACTION_KIND => {
-                                        if group.input.pressed_this_frame(Button::UP) {
-                                            $bundle.selection.action_kind = $bundle.selection.action_kind.next_up();
-                                        } else if group.input.pressed_this_frame(Button::DOWN) {
-                                            $bundle.selection.action_kind = $bundle.selection.action_kind.next_down();
-                                        }
-                                    }
-                                    MONEY_AMOUNT => {
-                                        if group.input.pressed_this_frame(Button::UP) {
-                                            $bundle.selection.bet = $bundle.selection.bet.saturating_add(min_money_unit.get());
-                                        } else if group.input.pressed_this_frame(Button::DOWN) {
-                                            $bundle.selection.bet = $bundle.selection.bet.saturating_sub(min_money_unit.get());
-                                        }
-                                    }
-                                    _ => {}
-                                }
-                            }
-
-                            player_action_opt
-                        }
-                        _ => None,
-                    };
-
-                    if let Zero = group.ctx.hot {
-                        group.ctx.set_next_hot(AceyDeuceyMenu(ACTION_KIND));
-                    }
-
-                    player_action_opt
-                }
+            let $bundle = StateBundle {
+                deck,
+                posts,
+                current,
+                pot,
+                player_count,
+                selection: MenuSelection::default(),
             };
         }
     }
+
+    const MENU_H: unscaled::H = unscaled::h_const_div(
+        command::HEIGHT_H,
+        6
+    );
+
+    const MENU_RECT: unscaled::Rect = unscaled::Rect {
+        x: unscaled::X(0),
+        y: unscaled::y_const_add_h(
+            unscaled::Y(0),
+            unscaled::h_const_sub(
+                command::HEIGHT_H,
+                MENU_H
+            )
+        ),
+        w: command::WIDTH_W,
+        h: MENU_H,
+    };
 
     match &mut state.table.state {
         Undealt {
@@ -730,6 +616,207 @@ pub fn update_and_render(
                 bundle,
                 None
             );
+
+            let current_i = usize::from(bundle.current);
+
+            let action_opt = match &state.table.seats.personalities[current_i] {
+                Some(_) => {
+                    // TODO have cpu player actually calculate the probabilty here
+                    // and decide what to do based on that
+                    Some(Action::Bet(initial_ante_amount.get()))
+                }
+                None => {
+                    stack_money_text!(money_text = state.table.seats.moneys[current_i]);
+
+                    const ACTION_KIND: ui::AceyDeuceyMenuId = 0;
+                    const MONEY_AMOUNT: ui::AceyDeuceyMenuId = 1;
+                    const SUBMIT: ui::AceyDeuceyMenuId = 2;
+                    const MENU_KIND_ONE_PAST_MAX: ui::AceyDeuceyMenuId = 3;
+
+                    group.commands.draw_nine_slice(
+                        gfx::NineSlice::Button,
+                        MENU_RECT
+                    );
+
+                    {
+                        let x = MENU_RECT.x + SPACING_W;
+                        let mut y = MENU_RECT.y + SPACING_H;
+                        group.commands.print_chars(
+                            &money_text,
+                            x,
+                            y,
+                            TEXT
+                        );
+                        y += gfx::CHAR_LINE_ADVANCE;
+                    }
+
+                    let player_action_opt = match group.ctx.hot {
+                        AceyDeuceyMenu(menu_id) => {
+                            let x = MENU_RECT.x + SPACING_W * 10;
+                            let y = MENU_RECT.y + SPACING_H;
+
+                            let action_kind_rect = unscaled::Rect {
+                                x,
+                                y,
+                                w: unscaled::W(50),
+                                h: MENU_RECT.h - SPACING_H * 2,
+                            };
+
+                            let action_kind_text = bundle.selection.action_kind.text();
+
+                            {
+                                let xy = gfx::center_line_in_rect(
+                                    action_kind_text.len() as _,
+                                    action_kind_rect,
+                                );
+                                group.commands.print_chars(
+                                    action_kind_text,
+                                    xy.x,
+                                    xy.y,
+                                    TEXT
+                                );
+                            }
+
+                            ui::draw_quick_select(
+                                group,
+                                action_kind_rect,
+                                AceyDeuceyMenu(ACTION_KIND),
+                            );
+
+                            let money_rect = unscaled::Rect {
+                                x: action_kind_rect.x + action_kind_rect.w,
+                                ..action_kind_rect
+                            };
+
+                            match bundle.selection.action_kind {
+                                ActionKind::Bet => {
+                                    draw_money_in_rect!(group, bundle.selection.bet, money_rect);
+
+                                    ui::draw_quick_select(
+                                        group,
+                                        money_rect,
+                                        AceyDeuceyMenu(MONEY_AMOUNT),
+                                    );
+                                }
+                                ActionKind::Pass => {}
+                            }
+
+                            let player_action_opt = if do_button(
+                                group,
+                                ButtonSpec {
+                                    id: AceyDeuceyMenu(SUBMIT),
+                                    rect: unscaled::Rect {
+                                        x: action_kind_rect.x + action_kind_rect.w + action_kind_rect.w,
+                                        ..action_kind_rect
+                                    },
+                                    text: b"submit",
+                                }
+                            ) {
+                                Some(match bundle.selection.action_kind {
+                                    ActionKind::Pass => Action::Pass,
+                                    ActionKind::Bet => Action::Bet(bundle.selection.bet),
+                                })
+                            } else {
+                                None
+                            };
+
+                            if group.input.pressed_this_frame(Button::LEFT) {
+                                let mut new_id = menu_id;
+                                new_id = match new_id.checked_sub(1) {
+                                    Some(new_id) => new_id,
+                                    None => MENU_KIND_ONE_PAST_MAX - 1,
+                                };
+
+                                if new_id == MONEY_AMOUNT
+                                && bundle.selection.action_kind != ActionKind::Bet {
+                                    new_id = match new_id.checked_sub(1) {
+                                        Some(new_id) => new_id,
+                                        None => MENU_KIND_ONE_PAST_MAX - 1,
+                                    };
+                                }
+
+                                group.ctx.set_next_hot(AceyDeuceyMenu(new_id));
+                            } else if group.input.pressed_this_frame(Button::RIGHT) {
+                                let mut new_id = menu_id;
+                                new_id += 1;
+                                if new_id >= MENU_KIND_ONE_PAST_MAX {
+                                    new_id = 0;
+                                }
+
+                                if new_id == MONEY_AMOUNT
+                                && bundle.selection.action_kind != ActionKind::Bet {
+                                    new_id += 1;
+                                    if new_id >= MENU_KIND_ONE_PAST_MAX {
+                                        new_id = 0;
+                                    }
+                                }
+
+                                group.ctx.set_next_hot(AceyDeuceyMenu(new_id));
+                            } else {
+                                match menu_id {
+                                    ACTION_KIND => {
+                                        if group.input.pressed_this_frame(Button::UP) {
+                                            bundle.selection.action_kind = bundle.selection.action_kind.next_up();
+                                        } else if group.input.pressed_this_frame(Button::DOWN) {
+                                            bundle.selection.action_kind = bundle.selection.action_kind.next_down();
+                                        }
+                                    }
+                                    MONEY_AMOUNT => {
+                                        if group.input.pressed_this_frame(Button::UP) {
+                                            bundle.selection.bet = bundle.selection.bet.saturating_add(min_money_unit.get());
+                                        } else if group.input.pressed_this_frame(Button::DOWN) {
+                                            bundle.selection.bet = bundle.selection.bet.saturating_sub(min_money_unit.get());
+                                        }
+                                    }
+                                    _ => {}
+                                }
+                            }
+
+                            player_action_opt
+                        }
+                        _ => None,
+                    };
+
+                    if let Zero = group.ctx.hot {
+                        group.ctx.set_next_hot(AceyDeuceyMenu(ACTION_KIND));
+                    }
+
+                    player_action_opt
+                }
+            };
+
+            match action_opt {
+                Some(Action::Pass) => {
+                    next_bundle!(
+                        new_bundle =
+                            bundle.deck.clone(),
+                            bundle.current,
+                            bundle.player_count,
+                            bundle.pot
+                    );
+
+                    state.table.state = DealtPosts {
+                        bundle: new_bundle,
+                    };
+                }
+                Some(Action::Bet(bet)) => {
+                    bundle.pot = bundle.pot.saturating_add(bet);
+
+                    let third = loop {
+                        if let Some(third) = bundle.deck.draw() {
+                            break third;
+                        } else {
+                            bundle.deck = gen_deck(rng);
+                        }
+                    };
+
+                    state.table.state = Reveal {
+                        bundle: bundle.clone(),
+                        third,
+                    };
+                }
+                None => {}
+            }
         },
         Reveal { bundle, third } => {
             let group = new_group!();
@@ -737,8 +824,52 @@ pub fn update_and_render(
             do_acey_deucey!(
                 group,
                 bundle,
-                Some(third)
+                Some(*third)
             );
+
+            group.commands.draw_nine_slice(
+                gfx::NineSlice::Button,
+                MENU_RECT
+            );
+
+            // TODO calculate outcome and show it.
+
+            let x = MENU_RECT.x + SPACING_W * 10;
+            let y = MENU_RECT.y + SPACING_H;
+
+            let next_rect = unscaled::Rect {
+                x,
+                y,
+                w: unscaled::W(50),
+                h: MENU_RECT.h - SPACING_H * 2,
+            };
+
+            if do_button(
+                group,
+                ButtonSpec {
+                    id: NextDeal,
+                    rect: next_rect,
+                    text: b"next",
+                }
+            ) {
+                // TODO transfer money put of the pot if the current player won.
+
+                next_bundle!(
+                    new_bundle =
+                        bundle.deck.clone(),
+                        bundle.current,
+                        bundle.player_count,
+                        bundle.pot
+                );
+
+                state.table.state = DealtPosts {
+                    bundle: new_bundle,
+                };
+            }
+
+            if let Zero = group.ctx.hot {
+                group.ctx.set_next_hot(NextDeal);
+            }
         },
     }
 

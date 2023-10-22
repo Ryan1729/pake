@@ -134,6 +134,7 @@ mod ui {
         SkipRemainderOfGameSelect,
         ShowdownSubmit,
         AceyDeuceyMenu(AceyDeuceyMenuId),
+        NextDeal,
     }
 
     #[derive(Copy, Clone, Default, Debug)]

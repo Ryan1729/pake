@@ -139,7 +139,7 @@ impl Commands {
         );
     }
 
-    pub fn draw_holdem_hand_selected(
+    pub fn draw_selected(
         &mut self,
         x: unscaled::X,
         y: unscaled::Y
@@ -151,6 +151,8 @@ impl Commands {
 
         const GRID_W: unscaled::W = unscaled::W(24);
 
+        // Place the point of the arrow at the passed in (x,y).
+        let new_x = x.saturating_sub(SELECTED_W / 2);
         let new_y = y.saturating_sub(SELECTED_H);
 
         self.sspr(
@@ -159,12 +161,23 @@ impl Commands {
                 y: sprite::Y(SELECTED_Y.get()),
             },
             Rect::from_unscaled(unscaled::Rect {
-                x: x + ((Self::HOLDEM_HAND_X_OFFSET + card::WIDTH) / 2) - SELECTED_W / 2,
+                x: new_x,
                 y: new_y,
                 w: SELECTED_W,
                 h: SELECTED_H,
             }),
         );
+    }
+
+    pub fn draw_holdem_hand_selected(
+        &mut self,
+        x: unscaled::X,
+        y: unscaled::Y
+    ) {
+        self.draw_selected(
+            x + ((Self::HOLDEM_HAND_X_OFFSET + card::WIDTH) / 2),
+            y,
+        )
     }
 
     pub fn draw_holdem_hand(
