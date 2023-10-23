@@ -1,5 +1,5 @@
 use gfx::{card, Commands, SPACING_W, SPACING_H};
-use models::{Card, ALL_CARDS, Deck, Money, NonZeroMoney, gen_deck};
+use models::{Card, ALL_CARDS, Deck, Money, NonZeroMoney, gen_deck, get_rank};
 use platform_types::{Button, Dir, Input, PaletteIndex, Speaker, SFX, command, unscaled, TEXT};
 
 use xs::Xs;
@@ -166,7 +166,7 @@ type Pot = Money;
 pub enum Action {
     #[default]
     Pass,
-    Bet(Money)
+    Bet(NonZeroMoney)
 }
 
 #[derive(Copy, Clone, Debug, Default, Eq, PartialEq)]
@@ -202,10 +202,24 @@ impl ActionKind {
     }
 }
 
-#[derive(Clone, Default)]
+const MIN_MONEY_UNIT: NonZeroMoney = NonZeroMoney::MIN.saturating_add(5 - 1);
+const INITIAL_ANTE_AMOUNT: NonZeroMoney = MIN_MONEY_UNIT.saturating_mul(
+    MIN_MONEY_UNIT
+);
+
+#[derive(Clone)]
 pub struct MenuSelection {
     pub action_kind: ActionKind,
-    pub bet: Money,
+    pub bet: NonZeroMoney,
+}
+
+impl Default for MenuSelection {
+    fn default() -> Self {
+        Self {
+            action_kind: ActionKind::default(),
+            bet: MIN_MONEY_UNIT,
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -272,11 +286,6 @@ pub fn update_and_render(
             }
         }
     }
-
-    let min_money_unit: NonZeroMoney = NonZeroMoney::MIN.saturating_add(5 - 1);
-    let initial_ante_amount: NonZeroMoney = min_money_unit.saturating_mul(
-        min_money_unit
-    );
 
     let mut cmd = ModeCmd::NoOp;
 
@@ -510,9 +519,9 @@ pub fn update_and_render(
 
                 for i in 0..player_count.usize() {
                     state.table.seats.moneys[i] = starting_money
-                        .saturating_sub(initial_ante_amount.get());
+                        .saturating_sub(INITIAL_ANTE_AMOUNT.get());
 
-                    pot = pot.saturating_add(initial_ante_amount.get());
+                    pot = pot.saturating_add(INITIAL_ANTE_AMOUNT.get());
                 }
 
                 state.table.seats.personalities[0] = None;
@@ -556,12 +565,12 @@ pub fn update_and_render(
                         let menu_i = 2;
                         match input.dir_pressed_this_frame() {
                             Some(Dir::Up) => {
-                                *starting_money = starting_money.saturating_add(min_money_unit.get());
+                                *starting_money = starting_money.saturating_add(MIN_MONEY_UNIT.get());
                             },
                             Some(Dir::Down) => {
-                                *starting_money = starting_money.saturating_sub(min_money_unit.get());
+                                *starting_money = starting_money.saturating_sub(MIN_MONEY_UNIT.get());
                                 if *starting_money == 0 {
-                                    *starting_money = min_money_unit.get();
+                                    *starting_money = MIN_MONEY_UNIT.get();
                                 }
                             },
                             Some(Dir::Left) => {
@@ -617,13 +626,15 @@ pub fn update_and_render(
                 None
             );
 
+            // TODO handle connectors, pairs, and aces.
+
             let current_i = usize::from(bundle.current);
 
             let action_opt = match &state.table.seats.personalities[current_i] {
                 Some(_) => {
                     // TODO have cpu player actually calculate the probabilty here
                     // and decide what to do based on that
-                    Some(Action::Bet(initial_ante_amount.get()))
+                    Some(Action::Bet(INITIAL_ANTE_AMOUNT))
                 }
                 None => {
                     stack_money_text!(money_text = state.table.seats.moneys[current_i]);
@@ -763,9 +774,12 @@ pub fn update_and_render(
                                     }
                                     MONEY_AMOUNT => {
                                         if group.input.pressed_this_frame(Button::UP) {
-                                            bundle.selection.bet = bundle.selection.bet.saturating_add(min_money_unit.get());
+                                            bundle.selection.bet = bundle.selection.bet.saturating_add(MIN_MONEY_UNIT.get());
                                         } else if group.input.pressed_this_frame(Button::DOWN) {
-                                            bundle.selection.bet = bundle.selection.bet.saturating_sub(min_money_unit.get());
+                                            let new_value = bundle.selection.bet.get().saturating_sub(MIN_MONEY_UNIT.get());
+                                            if let Some(new_bet) = NonZeroMoney::new(new_value) {
+                                                bundle.selection.bet = new_bet;
+                                            }
                                         }
                                     }
                                     _ => {}
@@ -785,6 +799,14 @@ pub fn update_and_render(
                 }
             };
 
+            if bundle.selection.bet.get() > state.table.seats.moneys[current_i] {
+                if let Some(new_bet) = NonZeroMoney::new(
+                    state.table.seats.moneys[current_i]
+                ) {
+                    bundle.selection.bet = new_bet;
+                }
+            }
+
             match action_opt {
                 Some(Action::Pass) => {
                     next_bundle!(
@@ -800,7 +822,10 @@ pub fn update_and_render(
                     };
                 }
                 Some(Action::Bet(bet)) => {
-                    bundle.pot = bundle.pot.saturating_add(bet);
+                    state.table.seats.moneys[current_i] =
+                        state.table.seats.moneys[current_i]
+                            .saturating_sub(bet.get());
+                    bundle.pot = bundle.pot.saturating_add(bet.get());
 
                     let third = loop {
                         if let Some(third) = bundle.deck.draw() {
@@ -832,7 +857,59 @@ pub fn update_and_render(
                 MENU_RECT
             );
 
-            // TODO calculate outcome and show it.
+            enum Outcome {
+                Loss,
+                Win,
+            }
+            use Outcome::*;
+
+            let outcome = {
+                let ranks = [
+                    get_rank(bundle.posts[0]),
+                    get_rank(bundle.posts[1]),
+                ];
+                let min_rank = core::cmp::min(ranks[0], ranks[1]);
+                let max_rank = core::cmp::max(ranks[0], ranks[1]);
+                let third_rank = get_rank(*third);
+                if min_rank < third_rank
+                && third_rank < max_rank {
+                    Win
+                } else {
+                    Loss
+                }
+            };
+
+            {
+                let mut outcome_text = [0u8; 20];
+                use std::io::Write;
+
+                match outcome {
+                    Loss => {
+                        let _cant_actually_fail = write!(
+                            &mut outcome_text[..],
+                            "player {} lost!",
+                            bundle.current
+                        );
+                    }
+                    Win => {
+                        let _cant_actually_fail = write!(
+                            &mut outcome_text[..],
+                            "player {} won!",
+                            bundle.current
+                        );
+                    }
+                }
+
+                let x = MENU_RECT.x + SPACING_W;
+                let mut y = MENU_RECT.y + SPACING_H;
+                group.commands.print_chars(
+                    &outcome_text,
+                    x,
+                    y,
+                    TEXT
+                );
+                y += gfx::CHAR_LINE_ADVANCE;
+            }
 
             let x = MENU_RECT.x + SPACING_W * 10;
             let y = MENU_RECT.y + SPACING_H;
