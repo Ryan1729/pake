@@ -222,6 +222,13 @@ impl Default for MenuSelection {
     }
 }
 
+#[derive(Clone, Copy, Default)]
+pub enum Round {
+    #[default]
+    One,
+    AfterOne,
+}
+
 #[derive(Clone)]
 pub struct StateBundle {
     pub deck: Deck,
@@ -230,6 +237,7 @@ pub struct StateBundle {
     pub pot: Pot,
     pub player_count: PlayerCount,
     pub selection: MenuSelection,
+    pub round: Round,
 }
 
 #[derive(Clone)]
@@ -241,6 +249,7 @@ pub enum TableState {
     Reveal {
         bundle: StateBundle,
         third: Card,
+        bet: NonZeroMoney,
     },
 }
 
@@ -398,6 +407,7 @@ pub fn update_and_render(
                 pot,
                 player_count,
                 selection: MenuSelection::default(),
+                round: Round::AfterOne,
             };
         }
     }
@@ -544,6 +554,7 @@ pub fn update_and_render(
                         pot,
                         player_count,
                         selection: <_>::default(),
+                        round: <_>::default(),
                     }
                 };
             } else {
@@ -799,9 +810,24 @@ pub fn update_and_render(
                 }
             };
 
+            // You can't bet more than you have
             if bundle.selection.bet.get() > state.table.seats.moneys[current_i] {
                 if let Some(new_bet) = NonZeroMoney::new(
                     state.table.seats.moneys[current_i]
+                ) {
+                    bundle.selection.bet = new_bet;
+                }
+            }
+
+            let pot_limit = match bundle.round {
+                Round::One => bundle.pot / 2,
+                Round::AfterOne => bundle.pot,
+            };
+
+            // You can't bet more than the pot limit
+            if bundle.selection.bet.get() > pot_limit {
+                if let Some(new_bet) = NonZeroMoney::new(
+                    pot_limit
                 ) {
                     bundle.selection.bet = new_bet;
                 }
@@ -822,11 +848,6 @@ pub fn update_and_render(
                     };
                 }
                 Some(Action::Bet(bet)) => {
-                    state.table.seats.moneys[current_i] =
-                        state.table.seats.moneys[current_i]
-                            .saturating_sub(bet.get());
-                    bundle.pot = bundle.pot.saturating_add(bet.get());
-
                     let third = loop {
                         if let Some(third) = bundle.deck.draw() {
                             break third;
@@ -838,12 +859,13 @@ pub fn update_and_render(
                     state.table.state = Reveal {
                         bundle: bundle.clone(),
                         third,
+                        bet,
                     };
                 }
                 None => {}
             }
         },
-        Reveal { bundle, third } => {
+        Reveal { bundle, third, bet } => {
             let group = new_group!();
 
             do_acey_deucey!(
@@ -929,7 +951,22 @@ pub fn update_and_render(
                     text: b"next",
                 }
             ) {
-                // TODO transfer money put of the pot if the current player won.
+                let current_i = usize::from(bundle.current);
+                match outcome {
+                    Loss => {
+                        state.table.seats.moneys[current_i] =
+                            state.table.seats.moneys[current_i]
+                                .saturating_sub(bet.get());
+                        bundle.pot = bundle.pot.saturating_add(bet.get());
+                    }
+                    Win => {
+                        // TODO Handle pot reaching 0
+                        bundle.pot = bundle.pot.saturating_sub(bet.get());
+                        state.table.seats.moneys[current_i] =
+                            state.table.seats.moneys[current_i]
+                                .saturating_add(bet.get());
+                    }
+                }
 
                 next_bundle!(
                     new_bundle =
