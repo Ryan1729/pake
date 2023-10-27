@@ -386,11 +386,18 @@ pub fn update_and_render(
             let pot = $pot;
 
             let current = {
-                // Normally, the player after the dealer acts first.
                 let mut index = previous_index + 1;
-                if index >= player_count.u8() {
-                    index = 0;
+                while {
+                    if index >= player_count.u8() {
+                        index = 0;
+                    }
+
+                    index != previous_index
+                    && state.table.seats.moneys[usize::from(index)] == 0
+                } {
+                    index += 1;
                 }
+
                 index
             };
 
@@ -960,7 +967,6 @@ pub fn update_and_render(
                         bundle.pot = bundle.pot.saturating_add(bet.get());
                     }
                     Win => {
-                        // TODO Handle pot reaching 0
                         bundle.pot = bundle.pot.saturating_sub(bet.get());
                         state.table.seats.moneys[current_i] =
                             state.table.seats.moneys[current_i]
@@ -968,17 +974,29 @@ pub fn update_and_render(
                     }
                 }
 
-                next_bundle!(
-                    new_bundle =
-                        bundle.deck.clone(),
-                        bundle.current,
-                        bundle.player_count,
-                        bundle.pot
-                );
+                if bundle.pot == 0 {
+                    // TODO show a winner screen with more winner info.
+                    if state.table.seats.personalities[0].is_none() {
+                        println!("User wins!");
+                    } else {
+                        println!("Cpu player wins!");
+                    }
 
-                state.table.state = DealtPosts {
-                    bundle: new_bundle,
-                };
+                    group.speaker.request_sfx(SFX::CardPlace);
+                    state.table.state = <_>::default();
+                } else {
+                    next_bundle!(
+                        new_bundle =
+                            bundle.deck.clone(),
+                            bundle.current,
+                            bundle.player_count,
+                            bundle.pot
+                    );
+
+                    state.table.state = DealtPosts {
+                        bundle: new_bundle,
+                    };
+                }
             }
 
             if let Zero = group.ctx.hot {
