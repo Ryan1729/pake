@@ -90,10 +90,15 @@ pub struct State {
 
 impl State {
     pub fn new(seed: Seed) -> State {
+        // Hold'em
         // 22 Players, User dealt a pair of 8s, beaten by a 8-high straight.
         //let seed = [177, 142, 173, 15, 242, 60, 217, 65, 49, 80, 175, 162, 108, 73, 4, 62];
         // 22 Players, User dealt a pair of Aces, wins with Aces over Queens.
         // let seed = [148, 99, 192, 160, 91, 61, 217, 65, 108, 157, 212, 200, 23, 73, 4, 62];
+        // Acey-Deucey
+        // 2 players
+        // Player gets dealt a pair of 8s early on (~3 rounds)
+        // let seed = [145, 236, 211, 148, 118, 77, 217, 65, 97, 41, 161, 87, 46, 60, 4, 62];
         let rng = xs::from_seed(seed);
 
         State {
@@ -135,6 +140,7 @@ mod ui {
         ShowdownSubmit,
         AceyDeuceyMenu(AceyDeuceyMenuId),
         NextDeal,
+        AcceptBurn,
     }
 
     #[derive(Copy, Clone, Default, Debug)]

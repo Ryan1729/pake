@@ -1,5 +1,5 @@
-use gfx::{card, Commands, SPACING_W, SPACING_H};
-use models::{Card, ALL_CARDS, Deck, Money, NonZeroMoney, gen_deck, get_rank};
+use gfx::{card, pre_nul_len, Commands, SPACING_W, SPACING_H};
+use models::{Card, ALL_CARDS, Deck, Money, NonZeroMoney, Rank, gen_deck, get_rank};
 use platform_types::{Button, Dir, Input, PaletteIndex, Speaker, SFX, command, unscaled, TEXT};
 
 use xs::Xs;
@@ -8,6 +8,13 @@ use crate::shared_game_types::{CpuPersonality, Personality, ModeCmd, SkipState};
 use crate::ui::{self, draw_money_in_rect, stack_money_text, ButtonSpec, Id::*, do_button};
 
 type Posts = [Card; 2];
+
+fn get_ranks(posts: Posts) -> [Rank; 2] {
+    [
+        get_rank(posts[0]),
+        get_rank(posts[1]),
+    ]
+}
 
 fn deal(rng: &mut Xs) -> (Posts, Deck) {
     let mut deck = gen_deck(rng);
@@ -162,18 +169,30 @@ pub struct Seats {
 
 type Pot = Money;
 
+const MIN_MONEY_UNIT: NonZeroMoney = NonZeroMoney::MIN.saturating_add(5 - 1);
+const INITIAL_ANTE_AMOUNT: NonZeroMoney = MIN_MONEY_UNIT.saturating_mul(
+    MIN_MONEY_UNIT
+);
+
 #[derive(Copy, Clone, Debug, Default)]
 pub enum Action {
     #[default]
     Pass,
-    Bet(NonZeroMoney)
+    Bet(NonZeroMoney),
+    Burn(NonZeroMoney),
 }
+
+const CONNECTORS_AMOUNT: NonZeroMoney = MIN_MONEY_UNIT;
+const CONNECTORS_BURN: Action = Action::Burn(CONNECTORS_AMOUNT);
+const PAIR_AMOUNT: NonZeroMoney = MIN_MONEY_UNIT.saturating_add(MIN_MONEY_UNIT.get());
+const PAIR_BURN: Action = Action::Burn(PAIR_AMOUNT);
 
 #[derive(Copy, Clone, Debug, Default, Eq, PartialEq)]
 pub enum ActionKind {
     #[default]
     Pass,
     Bet,
+    // We don't currently have a case where we need Burn here, so we leave it out.
 }
 
 impl ActionKind {
@@ -201,11 +220,6 @@ impl ActionKind {
         }
     }
 }
-
-const MIN_MONEY_UNIT: NonZeroMoney = NonZeroMoney::MIN.saturating_add(5 - 1);
-const INITIAL_ANTE_AMOUNT: NonZeroMoney = MIN_MONEY_UNIT.saturating_mul(
-    MIN_MONEY_UNIT
-);
 
 #[derive(Clone)]
 pub struct MenuSelection {
@@ -644,30 +658,39 @@ pub fn update_and_render(
                 None
             );
 
-            // TODO handle connectors, pairs, and aces.
+            // TODO handle aces.
+            enum PostsKind {
+                Open,
+                Connectors,
+                Pair,
+            }
+            use PostsKind::*;
+            let posts_kind = {
+                let ranks = get_ranks(bundle.posts);
+
+                if ranks[0] == ranks[1] {
+                    Pair
+                } else
+                if ranks[0] == ranks[1] + 1
+                || ranks[1] == ranks[0] + 1 {
+                    Connectors
+                } else {
+                    Open
+                }
+            };
 
             let current_i = usize::from(bundle.current);
 
-            let action_opt = match &state.table.seats.personalities[current_i] {
-                Some(_) => {
-                    // TODO have cpu player actually calculate the probabilty here
-                    // and decide what to do based on that
-                    Some(Action::Bet(INITIAL_ANTE_AMOUNT))
-                }
-                None => {
-                    stack_money_text!(money_text = state.table.seats.moneys[current_i]);
-
-                    const ACTION_KIND: ui::AceyDeuceyMenuId = 0;
-                    const MONEY_AMOUNT: ui::AceyDeuceyMenuId = 1;
-                    const SUBMIT: ui::AceyDeuceyMenuId = 2;
-                    const MENU_KIND_ONE_PAST_MAX: ui::AceyDeuceyMenuId = 3;
-
+            macro_rules! draw_menu_rect_with_money {
+                () => {
                     group.commands.draw_nine_slice(
                         gfx::NineSlice::Button,
                         MENU_RECT
                     );
 
                     {
+                        stack_money_text!(money_text = state.table.seats.moneys[current_i]);
+
                         let x = MENU_RECT.x + SPACING_W;
                         let mut y = MENU_RECT.y + SPACING_H;
                         group.commands.print_chars(
@@ -678,6 +701,114 @@ pub fn update_and_render(
                         );
                         y += gfx::CHAR_LINE_ADVANCE;
                     }
+                }
+            }
+
+            macro_rules! do_burn_menu {
+                ($amount: ident) => ({
+                    draw_menu_rect_with_money!();
+
+                    let x = MENU_RECT.x + SPACING_W * 10;
+                    let y = MENU_RECT.y + SPACING_H;
+
+                    let burn_button_rect = unscaled::Rect {
+                        x,
+                        y,
+                        w: unscaled::W(50),
+                        h: MENU_RECT.h - SPACING_H * 2,
+                    };
+
+                    let player_action_opt = if do_button(
+                        group,
+                        ButtonSpec {
+                            id: AcceptBurn,
+                            rect: burn_button_rect,
+                            text: b"get burned",
+                        }
+                    ) {
+                        Some(Action::Burn($amount))
+                    } else {
+                        None
+                    };
+
+                    let burn_button_rect_far_x =
+                        burn_button_rect.x + burn_button_rect.w;
+
+                    let top_line_rect = unscaled::Rect {
+                        x: burn_button_rect_far_x + SPACING_W,
+                        w: MENU_RECT.w - (
+                            burn_button_rect_far_x - MENU_RECT.x
+                        ),
+                        h: burn_button_rect.h / 3,
+                        ..burn_button_rect
+                    };
+
+                    {
+                        let description_line = b"you cannot bet and will instead will be burned for";
+
+                        let xy = gfx::center_line_in_rect(
+                            description_line.len() as _,
+                            top_line_rect,
+                        );
+
+                        group.commands.print_chars(
+                            description_line,
+                            xy.x,
+                            xy.y + gfx::CHAR_H,
+                            TEXT
+                        );
+                    }
+                    {
+                        let bottom_line_rect = unscaled::Rect {
+                            y: top_line_rect.y + top_line_rect.h,
+                            ..top_line_rect
+                        };
+
+                        stack_money_text!(money_text = $amount);
+
+                        let description_line = &money_text;
+
+                        let xy = gfx::center_line_in_rect(
+                            pre_nul_len(description_line),
+                            bottom_line_rect,
+                        );
+
+                        group.commands.print_chars(
+                            description_line,
+                            xy.x,
+                            xy.y + gfx::CHAR_H,
+                            TEXT
+                        );
+                    }
+
+                    if let Zero = group.ctx.hot {
+                        group.ctx.set_next_hot(AcceptBurn);
+                    }
+
+                    player_action_opt
+                })
+            }
+
+            let action_opt = match
+                (
+                    &state.table.seats.personalities[current_i],
+                    posts_kind
+                )
+            {
+                (Some(_), Open) => {
+                    // TODO have cpu player actually calculate the probabilty here
+                    // and decide what to do based on that
+                    Some(Action::Bet(INITIAL_ANTE_AMOUNT))
+                }
+                (Some(_), Connectors) => Some(CONNECTORS_BURN),
+                (Some(_), Pair) => Some(PAIR_BURN),
+                (None, Open) => {
+                    const ACTION_KIND: ui::AceyDeuceyMenuId = 0;
+                    const MONEY_AMOUNT: ui::AceyDeuceyMenuId = 1;
+                    const SUBMIT: ui::AceyDeuceyMenuId = 2;
+                    const MENU_KIND_ONE_PAST_MAX: ui::AceyDeuceyMenuId = 3;
+
+                    draw_menu_rect_with_money!();
 
                     let player_action_opt = match group.ctx.hot {
                         AceyDeuceyMenu(menu_id) => {
@@ -815,6 +946,12 @@ pub fn update_and_render(
 
                     player_action_opt
                 }
+                (None, Connectors) => {
+                    do_burn_menu!(CONNECTORS_AMOUNT)
+                }
+                (None, Pair) => {
+                    do_burn_menu!(PAIR_AMOUNT)
+                }
             };
 
             // You can't bet more than you have
@@ -869,6 +1006,24 @@ pub fn update_and_render(
                         bet,
                     };
                 }
+                Some(Action::Burn(amount)) => {
+                    state.table.seats.moneys[current_i] =
+                        state.table.seats.moneys[current_i]
+                                .saturating_sub(amount.get());
+                    bundle.pot = bundle.pot.saturating_add(amount.get());
+
+                    next_bundle!(
+                        new_bundle =
+                            bundle.deck.clone(),
+                            bundle.current,
+                            bundle.player_count,
+                            bundle.pot
+                    );
+
+                    state.table.state = DealtPosts {
+                        bundle: new_bundle,
+                    };
+                }
                 None => {}
             }
         },
@@ -893,10 +1048,7 @@ pub fn update_and_render(
             use Outcome::*;
 
             let outcome = {
-                let ranks = [
-                    get_rank(bundle.posts[0]),
-                    get_rank(bundle.posts[1]),
-                ];
+                let ranks = get_ranks(bundle.posts);
                 let min_rank = core::cmp::min(ranks[0], ranks[1]);
                 let max_rank = core::cmp::max(ranks[0], ranks[1]);
                 let third_rank = get_rank(*third);
