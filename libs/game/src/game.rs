@@ -99,6 +99,10 @@ impl State {
         // 2 players
         // Player gets dealt a pair of 8s early on (~3 rounds)
         // let seed = [145, 236, 211, 148, 118, 77, 217, 65, 97, 41, 161, 87, 46, 60, 4, 62];
+        // 2 players
+        // Ace to player eventually ~16 rounds
+        let seed = [58, 107, 196, 116, 32, 80, 217, 65, 179, 226, 72, 65, 13, 58, 4, 62];
+
         let rng = xs::from_seed(seed);
 
         State {
@@ -141,6 +145,8 @@ mod ui {
         AceyDeuceyMenu(AceyDeuceyMenuId),
         NextDeal,
         AcceptBurn,
+        HighLowSelect,
+        HighLowSubmit,
     }
 
     #[derive(Copy, Clone, Default, Debug)]

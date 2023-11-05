@@ -68,6 +68,13 @@ pub const fn get_suit(card: Card) -> Suit {
 
 pub type Rank = u8;
 
+pub mod ranks {
+    use super::*;
+
+    pub const ACE: Rank = 0;
+    pub const HIGH_ACE: Rank = 13;
+}
+
 pub const fn get_rank(card: Card) -> Rank {
     card % RANK_COUNT
 }
