@@ -270,6 +270,7 @@ version = "0.1.0"
 dependencies = [
  "evaluate",
  "models",
+ "probability",
  "xs",
 ]
 
@@ -599,6 +600,10 @@ dependencies = [
  "rustc-hash",
  "variter",
 ]
+
+[[package]]
+name = "probability"
+version = "0.1.0"
 
 [[package]]
 name = "proc-macro2"

@@ -79,6 +79,7 @@ pub const fn get_rank(card: Card) -> Rank {
     card % RANK_COUNT
 }
 
+type CardAmount = u8;
 type CardIndex = u8;
 
 #[derive(Clone, Debug)]
@@ -122,6 +123,75 @@ pub fn gen_deck(rng: &mut Xs) -> Deck {
     xs::shuffle(rng, &mut output.cards);
 
     output
+}
+
+type CardBits = u64;
+#[derive(Clone, Copy, Debug, Default)]
+pub struct CardBitset(CardBits);
+
+compile_time_assert!{
+    CardBits::BITS >= DECK_SIZE as u32
+}
+
+impl CardBitset {
+    pub fn full() -> Self {
+        Self((1 << DECK_SIZE as CardBits) - 1)
+    }
+
+    pub fn len(&self) -> CardAmount {
+        self.0.count_ones() as CardAmount
+    }
+
+    pub fn set(&mut self, card: Card){
+        if card > DECK_SIZE { return }
+        self.0 |= 1 << CardBits::from(card);
+    }
+
+    pub fn remove(&mut self, card: Card) {
+        if card > DECK_SIZE { return }
+        self.0 &= !(1 << CardBits::from(card));
+    }
+
+    pub fn iter(self) -> CardBitsetIter {
+        CardBitsetIter {
+            set: self,
+            index: 0,
+        }
+    }
+}
+
+#[test]
+fn full_is_full() {
+    let full = CardBitset::full();
+
+    assert_eq!(full.len(), DECK_SIZE);
+
+    assert_eq!(full.iter().count(), DECK_SIZE as _);
+}
+
+pub struct CardBitsetIter {
+    set: CardBitset,
+    index: CardIndex,
+}
+
+impl Iterator for CardBitsetIter {
+    type Item = Card;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        while self.index < DECK_SIZE {
+            if (self.set.0 & 1 << self.index) != 0 {
+                let output = self.index;
+
+                self.index += 1;
+
+                return Some(output);
+            }
+
+            self.index += 1;
+        }
+
+        None
+    }
 }
 
 pub type Money = u32;

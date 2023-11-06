@@ -10,3 +10,6 @@ path = "src/look_up.rs"
 
 [dependencies.models]
 path = "../models"
+
+[dependencies.probability]
+path = "../probability"

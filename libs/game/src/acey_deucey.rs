@@ -1,6 +1,7 @@
 use gfx::{card, pre_nul_len, Commands, SPACING_W, SPACING_H};
-use models::{Card, ALL_CARDS, Deck, Money, NonZeroMoney, Rank, gen_deck, get_rank, ranks};
+use models::{Card, CardBitset, ALL_CARDS, Deck, Money, NonZeroMoney, Rank, gen_deck, get_rank, ranks};
 use platform_types::{Button, Dir, Input, PaletteIndex, Speaker, SFX, command, unscaled, TEXT};
+use probability::{EvalCount};
 
 use xs::Xs;
 
@@ -514,6 +515,37 @@ pub fn update_and_render(
         }
     }
 
+    #[derive(PartialEq, Eq)]
+    enum Outcome {
+        Loss,
+        Win,
+    }
+    use Outcome::*;
+    
+    fn calc_outcome(
+        posts: Posts,
+        third: Card,
+        ace: Ace,
+    ) -> Outcome {
+        use Outcome::*;
+        let ranks = get_ranks(
+            posts,
+            match ace {
+                Ace::Undecided => HighLow::default(),
+                Ace::Decided(high_low) => high_low,
+            }
+        );
+        let min_rank = core::cmp::min(ranks[0], ranks[1]);
+        let max_rank = core::cmp::max(ranks[0], ranks[1]);
+        let third_rank = get_rank(third);
+        if min_rank < third_rank
+        && third_rank < max_rank {
+            Win
+        } else {
+            Loss
+        }
+    }
+
     const MENU_H: unscaled::H = unscaled::h_const_div(
         command::HEIGHT_H,
         6
@@ -764,6 +796,9 @@ pub fn update_and_render(
                 }
             }
 
+            const MENU_UI_BASE_X: unscaled::X = unscaled::x_const_add_w(MENU_RECT.x, unscaled::w_const_mul(SPACING_W, 10));
+            const MENU_UI_BASE_Y: unscaled::Y = unscaled::y_const_add_h(MENU_RECT.y, SPACING_H);
+
             match {
                 if get_rank(bundle.posts[0]) == ranks::ACE {
                     match bundle.selection.ace {
@@ -788,12 +823,9 @@ pub fn update_and_render(
                         None => {
                             draw_menu_rect_with_money!();
 
-                            let x = MENU_RECT.x + SPACING_W * 10;
-                            let y = MENU_RECT.y + SPACING_H;
-
                             let high_low_rect = unscaled::Rect {
-                                x,
-                                y,
+                                x: MENU_UI_BASE_X,
+                                y: MENU_UI_BASE_Y,
                                 w: unscaled::W(50),
                                 h: MENU_RECT.h - SPACING_H * 2,
                             };
@@ -891,12 +923,9 @@ pub fn update_and_render(
                         ($amount: ident) => ({
                             draw_menu_rect_with_money!();
 
-                            let x = MENU_RECT.x + SPACING_W * 10;
-                            let y = MENU_RECT.y + SPACING_H;
-
                             let burn_button_rect = unscaled::Rect {
-                                x,
-                                y,
+                                x: MENU_UI_BASE_X,
+                                y: MENU_UI_BASE_Y,
                                 w: unscaled::W(50),
                                 h: MENU_RECT.h - SPACING_H * 2,
                             };
@@ -979,9 +1008,30 @@ pub fn update_and_render(
                         )
                     {
                         (Some(_), Open) => {
-                            // TODO have cpu player actually calculate the probabilty here
-                            // and decide what to do based on that
-                            Some(Action::Bet(INITIAL_ANTE_AMOUNT))
+                            let mut remaining_cards = CardBitset::full();
+
+                            // TODO? Count cards so we can remove more?
+                            remaining_cards.remove(bundle.posts[0]);
+                            remaining_cards.remove(bundle.posts[1]);
+
+                            let mut eval_count = EvalCount {
+                                total: 0,
+                                win_count: 0,
+                            };
+                            for card in remaining_cards.iter() {
+                                eval_count.total += 1;
+
+                                if calc_outcome(bundle.posts, card, bundle.selection.ace)
+                                == Outcome::Win {
+                                    eval_count.win_count += 1;
+                                }
+                            }
+                            
+                            if eval_count.probability() >= probability::FIFTY_PERCENT {
+                                Some(Action::Bet(INITIAL_ANTE_AMOUNT))
+                            } else {
+                                Some(Action::Pass)
+                            }
                         }
                         (Some(_), Connectors) => Some(CONNECTORS_BURN),
                         (Some(_), Pair) => Some(PAIR_BURN),
@@ -995,12 +1045,9 @@ pub fn update_and_render(
 
                             let player_action_opt = match group.ctx.hot {
                                 AceyDeuceyMenu(menu_id) => {
-                                    let x = MENU_RECT.x + SPACING_W * 10;
-                                    let y = MENU_RECT.y + SPACING_H;
-
                                     let action_kind_rect = unscaled::Rect {
-                                        x,
-                                        y,
+                                        x: MENU_UI_BASE_X,
+                                        y: MENU_UI_BASE_Y,
                                         w: unscaled::W(50),
                                         h: MENU_RECT.h - SPACING_H * 2,
                                     };
@@ -1162,6 +1209,8 @@ pub fn update_and_render(
 
                     match action_opt {
                         Some(Action::Pass) => {
+                            // TODO when it's a CPU player passing, show the cards 
+                            // they passed on to the player, and have them confirm.
                             next_bundle!(
                                 new_bundle =
                                     bundle.deck.clone(),
@@ -1226,30 +1275,7 @@ pub fn update_and_render(
                 MENU_RECT
             );
 
-            enum Outcome {
-                Loss,
-                Win,
-            }
-            use Outcome::*;
-
-            let outcome = {
-                let ranks = get_ranks(
-                    bundle.posts,
-                    match bundle.selection.ace {
-                        Ace::Undecided => HighLow::default(),
-                        Ace::Decided(high_low) => high_low,
-                    }
-                );
-                let min_rank = core::cmp::min(ranks[0], ranks[1]);
-                let max_rank = core::cmp::max(ranks[0], ranks[1]);
-                let third_rank = get_rank(*third);
-                if min_rank < third_rank
-                && third_rank < max_rank {
-                    Win
-                } else {
-                    Loss
-                }
-            };
+            let outcome = calc_outcome(bundle.posts, *third, bundle.selection.ace);
 
             {
                 let mut outcome_text = [0u8; 20];

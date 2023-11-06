@@ -13,5 +13,8 @@ path = "../../libs/evaluate"
 [dependencies.models]
 path = "../../libs/models"
 
+[dependencies.probability]
+path = "../../libs/probability"
+
 [dependencies.xs]
 path = "../../libs/xs"

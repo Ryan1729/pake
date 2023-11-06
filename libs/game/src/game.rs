@@ -1,4 +1,5 @@
 #![allow(unused_imports)]
+#![deny(unreachable_patterns)]
 
 use gfx::{CHAR_SPACING_W, SPACING_H, Commands};
 use models::{holdem::{HandIndex}};
@@ -101,7 +102,7 @@ impl State {
         // let seed = [145, 236, 211, 148, 118, 77, 217, 65, 97, 41, 161, 87, 46, 60, 4, 62];
         // 2 players
         // Ace to player eventually ~16 rounds
-        let seed = [58, 107, 196, 116, 32, 80, 217, 65, 179, 226, 72, 65, 13, 58, 4, 62];
+        // let seed = [58, 107, 196, 116, 32, 80, 217, 65, 179, 226, 72, 65, 13, 58, 4, 62];
 
         let rng = xs::from_seed(seed);
 

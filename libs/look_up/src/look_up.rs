@@ -1,15 +1,5 @@
-pub mod probability {
-    pub type Probability = u8;
-
-    pub const TWENTY_FIVE_PERCENT: Probability = 0b0100_0000;
-    pub const FIFTY_PERCENT: Probability = 0b1000_0000;
-    pub const SEVENTY_FIVE_PERCENT: Probability = 0b1100_0000;
-    pub const EIGHTY_SEVEN_POINT_FIVE_PERCENT: Probability = 0b1110_0000;
-}
-
-
 pub mod holdem {
-    use crate::probability::{Probability};
+    use probability::{Probability};
     use models::{ALL_CARDS, DECK_SIZE, holdem::Hand};
 
     pub const ALL_SORTED_HANDS_LEN: usize = 1326;

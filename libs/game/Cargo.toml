@@ -19,6 +19,9 @@ path = "../look_up"
 [dependencies.models]
 path = "../models"
 
+[dependencies.probability]
+path = "../probability"
+
 [dependencies.platform_types]
 path = "../platform_types"
 

@@ -1,17 +1,11 @@
 use models::{ALL_CARDS, Card, get_suit, holdem::{CommunityCards, Hand}};
+use probability::{EvalCount, Probability, FIFTY_PERCENT};
 
 use std::fs::OpenOptions;
 
 // TODO? Import this look_up stuff in some way that doesn't produce a dependency
 // cycle?
 mod look_up {
-    pub mod probability {
-        pub type Probability = u8;
-        pub const FIFTY_PERCENT: Probability = 0b1000_0000;
-        pub const SEVENTY_FIVE_PERCENT: Probability = 0b1100_0000;
-        pub const ONE: Probability = 0b1111_1111;
-    }
-
     pub mod holdem {
         use models::{ALL_CARDS, holdem::{Hand}};
 
@@ -45,7 +39,6 @@ use look_up::{
         ALL_SORTED_HANDS_LEN,
         ALL_SORTED_HANDS,
     },
-    probability::{Probability, FIFTY_PERCENT},
 };
 
 type Flop = [Card; 3];
@@ -90,46 +83,6 @@ fn sorted_flop(index: usize) -> Flop {
 #[test]
 fn sorted_flop_has_the_expected_last_flop() {
     assert_eq!(sorted_flop((ALL_SORTED_FLOPS_LEN - 1) as usize), [49, 50, 51]);
-}
-
-type Count = u32;
-
-#[derive(Clone, Copy, Debug)]
-struct EvalCount {
-    win_count: Count,
-    total: Count,
-}
-
-impl EvalCount {
-    fn probability(self) -> Probability {
-        assert!(self.total > 0);
-        let frac = f64::from(self.win_count) / f64::from(self.total);
-
-        ((frac * 256.) + 0.5) as Probability
-    }
-}
-
-#[test]
-fn probability_works_in_these_cases() {
-    use look_up::{probability::{FIFTY_PERCENT, SEVENTY_FIVE_PERCENT, ONE}};
-
-    macro_rules! a {
-        ($numerator: expr , $denomenator: expr => $expected: expr) => ({
-            let eval_count = EvalCount {
-                win_count: $numerator,
-                total: $denomenator,
-            };
-            assert_eq!(eval_count.probability(), $expected);
-        })
-    }
-
-    a!(1, 1 => ONE);
-    a!(0, 1 => 0);
-    a!(1, 2 => FIFTY_PERCENT);
-    a!(3, 4 => SEVENTY_FIVE_PERCENT);
-    for x in 0..256 {
-        a!(x, 256 => u8::try_from(x).unwrap());
-    }
 }
 
 type HandIndex = u16;

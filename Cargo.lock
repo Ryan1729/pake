@@ -537,6 +537,7 @@ dependencies = [
  "look_up",
  "models",
  "platform_types",
+ "probability",
  "xs",
 ]
 
@@ -838,6 +839,7 @@ name = "look_up"
 version = "0.1.0"
 dependencies = [
  "models",
+ "probability",
 ]
 
 [[package]]
@@ -1330,6 +1332,10 @@ dependencies = [
  "rustc-hash",
  "variter",
 ]
+
+[[package]]
+name = "probability"
+version = "0.1.0"
 
 [[package]]
 name = "proc-macro-crate"
