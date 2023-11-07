@@ -3,6 +3,8 @@ use models::{Card, CardBitset, ALL_CARDS, Deck, Money, NonZeroMoney, Rank, gen_d
 use platform_types::{Button, Dir, Input, PaletteIndex, Speaker, SFX, command, unscaled, TEXT};
 use probability::{EvalCount};
 
+use std::io::Write;
+
 use xs::Xs;
 
 use crate::shared_game_types::{CpuPersonality, Personality, ModeCmd, SkipState};
@@ -287,6 +289,7 @@ pub struct MenuSelection {
     pub bet: NonZeroMoney,
     pub ace: Ace,
     pub temp_high_low: HighLow,
+    pub cpu_passed: bool,
 }
 
 impl Default for MenuSelection {
@@ -296,6 +299,7 @@ impl Default for MenuSelection {
             bet: MIN_MONEY_UNIT,
             ace: Ace::default(),
             temp_high_low: <_>::default(),
+            cpu_passed: <_>::default(),
         }
     }
 }
@@ -773,6 +777,9 @@ pub fn update_and_render(
 
             let current_i = usize::from(bundle.current);
 
+            const MENU_UI_BASE_X: unscaled::X = unscaled::x_const_add_w(MENU_RECT.x, unscaled::w_const_mul(SPACING_W, 10));
+            const MENU_UI_BASE_Y: unscaled::Y = unscaled::y_const_add_h(MENU_RECT.y, SPACING_H);
+
             macro_rules! draw_menu_rect_with_money {
                 () => {
                     group.commands.draw_nine_slice(
@@ -796,469 +803,539 @@ pub fn update_and_render(
                 }
             }
 
-            const MENU_UI_BASE_X: unscaled::X = unscaled::x_const_add_w(MENU_RECT.x, unscaled::w_const_mul(SPACING_W, 10));
-            const MENU_UI_BASE_Y: unscaled::Y = unscaled::y_const_add_h(MENU_RECT.y, SPACING_H);
+            if bundle.selection.cpu_passed {
+                draw_menu_rect_with_money!();
 
-            match {
-                if get_rank(bundle.posts[0]) == ranks::ACE {
-                    match bundle.selection.ace {
-                        Ace::Undecided => None,
-                        Ace::Decided(high_low) => Some(high_low),
+                let ack_button_rect = unscaled::Rect {
+                    x: MENU_UI_BASE_X,
+                    y: MENU_UI_BASE_Y,
+                    w: unscaled::W(64),
+                    h: MENU_RECT.h - SPACING_H * 2,
+                };
+
+                if do_button(
+                    group,
+                    ButtonSpec {
+                        id: AcknowledgeCPUPass,
+                        rect: ack_button_rect,
+                        text: b"acknowledged",
                     }
-                } else {
-                    Some(HighLow::default())
-                }
-            } {
-                None => {
-                    match
-                        &state.table.seats.personalities[
-                            current_i
-                        ]
-                    {
-                        // TODO? Have the CPU player count cards enough to
-                        // know to choose high sometimes?
-                        Some(_) => {
-                            bundle.selection.ace = Ace::Decided(HighLow::Low);
-                        },
-                        None => {
-                            draw_menu_rect_with_money!();
+                ) {
+                    next_bundle!(
+                        new_bundle =
+                            bundle.deck.clone(),
+                            bundle.current,
+                            bundle.player_count,
+                            bundle.pot
+                    );
 
-                            let high_low_rect = unscaled::Rect {
-                                x: MENU_UI_BASE_X,
-                                y: MENU_UI_BASE_Y,
-                                w: unscaled::W(50),
-                                h: MENU_RECT.h - SPACING_H * 2,
-                            };
-
-                            let high_low_text = bundle.selection.temp_high_low.text();
-
-                            {
-                                let xy = gfx::center_line_in_rect(
-                                    high_low_text.len() as _,
-                                    high_low_rect,
-                                );
-                                group.commands.print_chars(
-                                    high_low_text,
-                                    xy.x,
-                                    xy.y,
-                                    TEXT
-                                );
-                            }
-
-                            ui::draw_quick_select(
-                                group,
-                                high_low_rect,
-                                HighLowSelect,
-                            );
-
-                            if do_button(
-                                group,
-                                ButtonSpec {
-                                    id: HighLowSubmit,
-                                    rect: unscaled::Rect {
-                                        x: high_low_rect.x + high_low_rect.w + high_low_rect.w,
-                                        ..high_low_rect
-                                    },
-                                    text: b"submit",
-                                }
-                            ) {
-                                bundle.selection.ace = Ace::Decided(bundle.selection.temp_high_low);
-                            }
-
-                            if group.input.pressed_this_frame(Button::LEFT)
-                            || group.input.pressed_this_frame(Button::RIGHT) {
-                                match group.ctx.hot {
-                                    HighLowSubmit => {
-                                        group.ctx.set_next_hot(HighLowSelect);
-                                    }
-                                    HighLowSelect => {
-                                        group.ctx.set_next_hot(HighLowSubmit);
-                                    }
-                                    _ => {}
-                                }
-                            } else {
-                                match group.ctx.hot {
-                                    HighLowSelect => {
-                                        if group.input.pressed_this_frame(Button::UP) {
-                                            bundle.selection.temp_high_low = bundle.selection.temp_high_low.next_up();
-                                        } else if group.input.pressed_this_frame(Button::DOWN) {
-                                            bundle.selection.temp_high_low = bundle.selection.temp_high_low.next_down();
-                                        }
-                                    }
-                                    _ => {}
-                                }
-                            }
-
-                            if let Zero = group.ctx.hot {
-                                group.ctx.set_next_hot(HighLowSelect);
-                            }
-                        }
-                    }
-                },
-                Some(high_low) => {
-                    enum PostsKind {
-                        Open,
-                        Connectors,
-                        Pair,
-                    }
-                    use PostsKind::*;
-                    let posts_kind = {
-                        let ranks = get_ranks(
-                            bundle.posts,
-                            high_low
-                        );
-
-                        if ranks[0] == ranks[1] {
-                            Pair
-                        } else
-                        if ranks[0] == ranks[1] + 1
-                        || ranks[1] == ranks[0] + 1 {
-                            Connectors
-                        } else {
-                            Open
-                        }
+                    state.table.state = DealtPosts {
+                        bundle: new_bundle,
                     };
+                }
 
-                    macro_rules! do_burn_menu {
-                        ($amount: ident) => ({
-                            draw_menu_rect_with_money!();
+                let ack_button_rect_far_x =
+                    ack_button_rect.x + ack_button_rect.w;
 
-                            let burn_button_rect = unscaled::Rect {
-                                x: MENU_UI_BASE_X,
-                                y: MENU_UI_BASE_Y,
-                                w: unscaled::W(50),
-                                h: MENU_RECT.h - SPACING_H * 2,
-                            };
+                let top_line_rect = unscaled::Rect {
+                    x: ack_button_rect_far_x + SPACING_W,
+                    w: MENU_RECT.w - (
+                        ack_button_rect_far_x - MENU_RECT.x
+                    ),
+                    ..ack_button_rect
+                };
 
-                            let player_action_opt = if do_button(
-                                group,
-                                ButtonSpec {
-                                    id: AcceptBurn,
-                                    rect: burn_button_rect,
-                                    text: b"get burned",
-                                }
-                            ) {
-                                Some(Action::Burn($amount))
-                            } else {
-                                None
-                            };
+                {
+                    let mut passed_text = [0 as u8; 32];
 
-                            let burn_button_rect_far_x =
-                                burn_button_rect.x + burn_button_rect.w;
+                    let _cant_actually_fail = write!(
+                        &mut passed_text[..],
+                        "player {current_i} passed",
+                    );
 
-                            let top_line_rect = unscaled::Rect {
-                                x: burn_button_rect_far_x + SPACING_W,
-                                w: MENU_RECT.w - (
-                                    burn_button_rect_far_x - MENU_RECT.x
-                                ),
-                                h: burn_button_rect.h / 3,
-                                ..burn_button_rect
-                            };
+                    let xy = gfx::center_line_in_rect(
+                        pre_nul_len(&passed_text),
+                        top_line_rect,
+                    );
 
-                            {
-                                let description_line = b"you cannot bet and will instead will be burned for";
+                    group.commands.print_chars(
+                        &passed_text,
+                        xy.x,
+                        xy.y + gfx::CHAR_H,
+                        TEXT
+                    );
+                }
 
-                                let xy = gfx::center_line_in_rect(
-                                    description_line.len() as _,
-                                    top_line_rect,
-                                );
-
-                                group.commands.print_chars(
-                                    description_line,
-                                    xy.x,
-                                    xy.y + gfx::CHAR_H,
-                                    TEXT
-                                );
-                            }
-                            {
-                                let bottom_line_rect = unscaled::Rect {
-                                    y: top_line_rect.y + top_line_rect.h,
-                                    ..top_line_rect
-                                };
-
-                                stack_money_text!(money_text = $amount);
-
-                                let description_line = &money_text;
-
-                                let xy = gfx::center_line_in_rect(
-                                    pre_nul_len(description_line),
-                                    bottom_line_rect,
-                                );
-
-                                group.commands.print_chars(
-                                    description_line,
-                                    xy.x,
-                                    xy.y + gfx::CHAR_H,
-                                    TEXT
-                                );
-                            }
-
-                            if let Zero = group.ctx.hot {
-                                group.ctx.set_next_hot(AcceptBurn);
-                            }
-
-                            player_action_opt
-                        })
+                if let Zero = group.ctx.hot {
+                    group.ctx.set_next_hot(AcknowledgeCPUPass);
+                }
+            } else {
+                match {
+                    if get_rank(bundle.posts[0]) == ranks::ACE {
+                        match bundle.selection.ace {
+                            Ace::Undecided => None,
+                            Ace::Decided(high_low) => Some(high_low),
+                        }
+                    } else {
+                        Some(HighLow::default())
                     }
-
-                    let action_opt = match
-                        (
-                            &state.table.seats.personalities[current_i],
-                            posts_kind
-                        )
-                    {
-                        (Some(_), Open) => {
-                            let mut remaining_cards = CardBitset::full();
-
-                            // TODO? Count cards so we can remove more?
-                            remaining_cards.remove(bundle.posts[0]);
-                            remaining_cards.remove(bundle.posts[1]);
-
-                            let mut eval_count = EvalCount {
-                                total: 0,
-                                win_count: 0,
-                            };
-                            for card in remaining_cards.iter() {
-                                eval_count.total += 1;
-
-                                if calc_outcome(bundle.posts, card, bundle.selection.ace)
-                                == Outcome::Win {
-                                    eval_count.win_count += 1;
+                } {
+                    None => {
+                        match
+                            &state.table.seats.personalities[
+                                current_i
+                            ]
+                        {
+                            // TODO? Have the CPU player count cards enough to
+                            // know to choose high sometimes?
+                            Some(_) => {
+                                bundle.selection.ace = Ace::Decided(HighLow::Low);
+                            },
+                            None => {
+                                draw_menu_rect_with_money!();
+    
+                                let high_low_rect = unscaled::Rect {
+                                    x: MENU_UI_BASE_X,
+                                    y: MENU_UI_BASE_Y,
+                                    w: unscaled::W(50),
+                                    h: MENU_RECT.h - SPACING_H * 2,
+                                };
+    
+                                let high_low_text = bundle.selection.temp_high_low.text();
+    
+                                {
+                                    let xy = gfx::center_line_in_rect(
+                                        high_low_text.len() as _,
+                                        high_low_rect,
+                                    );
+                                    group.commands.print_chars(
+                                        high_low_text,
+                                        xy.x,
+                                        xy.y,
+                                        TEXT
+                                    );
                                 }
-                            }
-                            
-                            if eval_count.probability() >= probability::FIFTY_PERCENT {
-                                Some(Action::Bet(INITIAL_ANTE_AMOUNT))
-                            } else {
-                                Some(Action::Pass)
+    
+                                ui::draw_quick_select(
+                                    group,
+                                    high_low_rect,
+                                    HighLowSelect,
+                                );
+    
+                                if do_button(
+                                    group,
+                                    ButtonSpec {
+                                        id: HighLowSubmit,
+                                        rect: unscaled::Rect {
+                                            x: high_low_rect.x + high_low_rect.w + high_low_rect.w,
+                                            ..high_low_rect
+                                        },
+                                        text: b"submit",
+                                    }
+                                ) {
+                                    bundle.selection.ace = Ace::Decided(bundle.selection.temp_high_low);
+                                }
+    
+                                if group.input.pressed_this_frame(Button::LEFT)
+                                || group.input.pressed_this_frame(Button::RIGHT) {
+                                    match group.ctx.hot {
+                                        HighLowSubmit => {
+                                            group.ctx.set_next_hot(HighLowSelect);
+                                        }
+                                        HighLowSelect => {
+                                            group.ctx.set_next_hot(HighLowSubmit);
+                                        }
+                                        _ => {}
+                                    }
+                                } else {
+                                    match group.ctx.hot {
+                                        HighLowSelect => {
+                                            if group.input.pressed_this_frame(Button::UP) {
+                                                bundle.selection.temp_high_low = bundle.selection.temp_high_low.next_up();
+                                            } else if group.input.pressed_this_frame(Button::DOWN) {
+                                                bundle.selection.temp_high_low = bundle.selection.temp_high_low.next_down();
+                                            }
+                                        }
+                                        _ => {}
+                                    }
+                                }
+    
+                                if let Zero = group.ctx.hot {
+                                    group.ctx.set_next_hot(HighLowSelect);
+                                }
                             }
                         }
-                        (Some(_), Connectors) => Some(CONNECTORS_BURN),
-                        (Some(_), Pair) => Some(PAIR_BURN),
-                        (None, Open) => {
-                            const ACTION_KIND: ui::AceyDeuceyMenuId = 0;
-                            const MONEY_AMOUNT: ui::AceyDeuceyMenuId = 1;
-                            const SUBMIT: ui::AceyDeuceyMenuId = 2;
-                            const MENU_KIND_ONE_PAST_MAX: ui::AceyDeuceyMenuId = 3;
-
-                            draw_menu_rect_with_money!();
-
-                            let player_action_opt = match group.ctx.hot {
-                                AceyDeuceyMenu(menu_id) => {
-                                    let action_kind_rect = unscaled::Rect {
-                                        x: MENU_UI_BASE_X,
-                                        y: MENU_UI_BASE_Y,
-                                        w: unscaled::W(50),
-                                        h: MENU_RECT.h - SPACING_H * 2,
-                                    };
-
-                                    let action_kind_text = bundle.selection.action_kind.text();
-
-                                    {
-                                        let xy = gfx::center_line_in_rect(
-                                            action_kind_text.len() as _,
-                                            action_kind_rect,
-                                        );
-                                        group.commands.print_chars(
-                                            action_kind_text,
-                                            xy.x,
-                                            xy.y,
-                                            TEXT
-                                        );
+                    },
+                    Some(high_low) => {
+                        enum PostsKind {
+                            Open,
+                            Connectors,
+                            Pair,
+                        }
+                        use PostsKind::*;
+                        let posts_kind = {
+                            let ranks = get_ranks(
+                                bundle.posts,
+                                high_low
+                            );
+    
+                            if ranks[0] == ranks[1] {
+                                Pair
+                            } else
+                            if ranks[0] == ranks[1] + 1
+                            || ranks[1] == ranks[0] + 1 {
+                                Connectors
+                            } else {
+                                Open
+                            }
+                        };
+    
+                        macro_rules! do_burn_menu {
+                            ($amount: ident) => ({
+                                draw_menu_rect_with_money!();
+    
+                                let burn_button_rect = unscaled::Rect {
+                                    x: MENU_UI_BASE_X,
+                                    y: MENU_UI_BASE_Y,
+                                    w: unscaled::W(50),
+                                    h: MENU_RECT.h - SPACING_H * 2,
+                                };
+    
+                                let player_action_opt = if do_button(
+                                    group,
+                                    ButtonSpec {
+                                        id: AcceptBurn,
+                                        rect: burn_button_rect,
+                                        text: b"get burned",
                                     }
-
-                                    ui::draw_quick_select(
-                                        group,
-                                        action_kind_rect,
-                                        AceyDeuceyMenu(ACTION_KIND),
+                                ) {
+                                    Some(Action::Burn($amount))
+                                } else {
+                                    None
+                                };
+    
+                                let burn_button_rect_far_x =
+                                    burn_button_rect.x + burn_button_rect.w;
+    
+                                let top_line_rect = unscaled::Rect {
+                                    x: burn_button_rect_far_x + SPACING_W,
+                                    w: MENU_RECT.w - (
+                                        burn_button_rect_far_x - MENU_RECT.x
+                                    ),
+                                    h: burn_button_rect.h / 3,
+                                    ..burn_button_rect
+                                };
+    
+                                {
+                                    let description_line = b"you cannot bet and will instead will be burned for";
+    
+                                    let xy = gfx::center_line_in_rect(
+                                        description_line.len() as _,
+                                        top_line_rect,
                                     );
-
-                                    let money_rect = unscaled::Rect {
-                                        x: action_kind_rect.x + action_kind_rect.w,
-                                        ..action_kind_rect
+    
+                                    group.commands.print_chars(
+                                        description_line,
+                                        xy.x,
+                                        xy.y + gfx::CHAR_H,
+                                        TEXT
+                                    );
+                                }
+                                {
+                                    let bottom_line_rect = unscaled::Rect {
+                                        y: top_line_rect.y + top_line_rect.h,
+                                        ..top_line_rect
                                     };
-
-                                    match bundle.selection.action_kind {
-                                        ActionKind::Bet => {
-                                            draw_money_in_rect!(group, bundle.selection.bet, money_rect);
-
-                                            ui::draw_quick_select(
-                                                group,
-                                                money_rect,
-                                                AceyDeuceyMenu(MONEY_AMOUNT),
+    
+                                    stack_money_text!(money_text = $amount);
+    
+                                    let description_line = &money_text;
+    
+                                    let xy = gfx::center_line_in_rect(
+                                        pre_nul_len(description_line),
+                                        bottom_line_rect,
+                                    );
+    
+                                    group.commands.print_chars(
+                                        description_line,
+                                        xy.x,
+                                        xy.y + gfx::CHAR_H,
+                                        TEXT
+                                    );
+                                }
+    
+                                if let Zero = group.ctx.hot {
+                                    group.ctx.set_next_hot(AcceptBurn);
+                                }
+    
+                                player_action_opt
+                            })
+                        }
+    
+                        let action_opt = match
+                            (
+                                &state.table.seats.personalities[current_i],
+                                posts_kind
+                            )
+                        {
+                            (Some(_), Open) => {
+                                let mut remaining_cards = CardBitset::full();
+    
+                                // TODO? Count cards so we can remove more?
+                                remaining_cards.remove(bundle.posts[0]);
+                                remaining_cards.remove(bundle.posts[1]);
+    
+                                let mut eval_count = EvalCount {
+                                    total: 0,
+                                    win_count: 0,
+                                };
+                                for card in remaining_cards.iter() {
+                                    eval_count.total += 1;
+    
+                                    if calc_outcome(bundle.posts, card, bundle.selection.ace)
+                                    == Outcome::Win {
+                                        eval_count.win_count += 1;
+                                    }
+                                }
+                                
+                                if eval_count.probability() >= probability::FIFTY_PERCENT {
+                                    Some(Action::Bet(INITIAL_ANTE_AMOUNT))
+                                } else {
+                                    Some(Action::Pass)
+                                }
+                            }
+                            (Some(_), Connectors) => Some(CONNECTORS_BURN),
+                            (Some(_), Pair) => Some(PAIR_BURN),
+                            (None, Open) => {
+                                const ACTION_KIND: ui::AceyDeuceyMenuId = 0;
+                                const MONEY_AMOUNT: ui::AceyDeuceyMenuId = 1;
+                                const SUBMIT: ui::AceyDeuceyMenuId = 2;
+                                const MENU_KIND_ONE_PAST_MAX: ui::AceyDeuceyMenuId = 3;
+    
+                                draw_menu_rect_with_money!();
+    
+                                let player_action_opt = match group.ctx.hot {
+                                    AceyDeuceyMenu(menu_id) => {
+                                        let action_kind_rect = unscaled::Rect {
+                                            x: MENU_UI_BASE_X,
+                                            y: MENU_UI_BASE_Y,
+                                            w: unscaled::W(50),
+                                            h: MENU_RECT.h - SPACING_H * 2,
+                                        };
+    
+                                        let action_kind_text = bundle.selection.action_kind.text();
+    
+                                        {
+                                            let xy = gfx::center_line_in_rect(
+                                                action_kind_text.len() as _,
+                                                action_kind_rect,
+                                            );
+                                            group.commands.print_chars(
+                                                action_kind_text,
+                                                xy.x,
+                                                xy.y,
+                                                TEXT
                                             );
                                         }
-                                        ActionKind::Pass => {}
-                                    }
-
-                                    let player_action_opt = if do_button(
-                                        group,
-                                        ButtonSpec {
-                                            id: AceyDeuceyMenu(SUBMIT),
-                                            rect: unscaled::Rect {
-                                                x: action_kind_rect.x + action_kind_rect.w + action_kind_rect.w,
-                                                ..action_kind_rect
-                                            },
-                                            text: b"submit",
-                                        }
-                                    ) {
-                                        Some(match bundle.selection.action_kind {
-                                            ActionKind::Pass => Action::Pass,
-                                            ActionKind::Bet => Action::Bet(bundle.selection.bet),
-                                        })
-                                    } else {
-                                        None
-                                    };
-
-                                    if group.input.pressed_this_frame(Button::LEFT) {
-                                        let mut new_id = menu_id;
-                                        new_id = match new_id.checked_sub(1) {
-                                            Some(new_id) => new_id,
-                                            None => MENU_KIND_ONE_PAST_MAX - 1,
+    
+                                        ui::draw_quick_select(
+                                            group,
+                                            action_kind_rect,
+                                            AceyDeuceyMenu(ACTION_KIND),
+                                        );
+    
+                                        let money_rect = unscaled::Rect {
+                                            x: action_kind_rect.x + action_kind_rect.w,
+                                            ..action_kind_rect
                                         };
-
-                                        if new_id == MONEY_AMOUNT
-                                        && bundle.selection.action_kind != ActionKind::Bet {
+    
+                                        match bundle.selection.action_kind {
+                                            ActionKind::Bet => {
+                                                draw_money_in_rect!(group, bundle.selection.bet, money_rect);
+    
+                                                ui::draw_quick_select(
+                                                    group,
+                                                    money_rect,
+                                                    AceyDeuceyMenu(MONEY_AMOUNT),
+                                                );
+                                            }
+                                            ActionKind::Pass => {}
+                                        }
+    
+                                        let player_action_opt = if do_button(
+                                            group,
+                                            ButtonSpec {
+                                                id: AceyDeuceyMenu(SUBMIT),
+                                                rect: unscaled::Rect {
+                                                    x: action_kind_rect.x + action_kind_rect.w + action_kind_rect.w,
+                                                    ..action_kind_rect
+                                                },
+                                                text: b"submit",
+                                            }
+                                        ) {
+                                            Some(match bundle.selection.action_kind {
+                                                ActionKind::Pass => Action::Pass,
+                                                ActionKind::Bet => Action::Bet(bundle.selection.bet),
+                                            })
+                                        } else {
+                                            None
+                                        };
+    
+                                        if group.input.pressed_this_frame(Button::LEFT) {
+                                            let mut new_id = menu_id;
                                             new_id = match new_id.checked_sub(1) {
                                                 Some(new_id) => new_id,
                                                 None => MENU_KIND_ONE_PAST_MAX - 1,
                                             };
-                                        }
-
-                                        group.ctx.set_next_hot(AceyDeuceyMenu(new_id));
-                                    } else if group.input.pressed_this_frame(Button::RIGHT) {
-                                        let mut new_id = menu_id;
-                                        new_id += 1;
-                                        if new_id >= MENU_KIND_ONE_PAST_MAX {
-                                            new_id = 0;
-                                        }
-
-                                        if new_id == MONEY_AMOUNT
-                                        && bundle.selection.action_kind != ActionKind::Bet {
+    
+                                            if new_id == MONEY_AMOUNT
+                                            && bundle.selection.action_kind != ActionKind::Bet {
+                                                new_id = match new_id.checked_sub(1) {
+                                                    Some(new_id) => new_id,
+                                                    None => MENU_KIND_ONE_PAST_MAX - 1,
+                                                };
+                                            }
+    
+                                            group.ctx.set_next_hot(AceyDeuceyMenu(new_id));
+                                        } else if group.input.pressed_this_frame(Button::RIGHT) {
+                                            let mut new_id = menu_id;
                                             new_id += 1;
                                             if new_id >= MENU_KIND_ONE_PAST_MAX {
                                                 new_id = 0;
                                             }
-                                        }
-
-                                        group.ctx.set_next_hot(AceyDeuceyMenu(new_id));
-                                    } else {
-                                        match menu_id {
-                                            ACTION_KIND => {
-                                                if group.input.pressed_this_frame(Button::UP) {
-                                                    bundle.selection.action_kind = bundle.selection.action_kind.next_up();
-                                                } else if group.input.pressed_this_frame(Button::DOWN) {
-                                                    bundle.selection.action_kind = bundle.selection.action_kind.next_down();
+    
+                                            if new_id == MONEY_AMOUNT
+                                            && bundle.selection.action_kind != ActionKind::Bet {
+                                                new_id += 1;
+                                                if new_id >= MENU_KIND_ONE_PAST_MAX {
+                                                    new_id = 0;
                                                 }
                                             }
-                                            MONEY_AMOUNT => {
-                                                if group.input.pressed_this_frame(Button::UP) {
-                                                    bundle.selection.bet = bundle.selection.bet.saturating_add(MIN_MONEY_UNIT.get());
-                                                } else if group.input.pressed_this_frame(Button::DOWN) {
-                                                    let new_value = bundle.selection.bet.get().saturating_sub(MIN_MONEY_UNIT.get());
-                                                    if let Some(new_bet) = NonZeroMoney::new(new_value) {
-                                                        bundle.selection.bet = new_bet;
+    
+                                            group.ctx.set_next_hot(AceyDeuceyMenu(new_id));
+                                        } else {
+                                            match menu_id {
+                                                ACTION_KIND => {
+                                                    if group.input.pressed_this_frame(Button::UP) {
+                                                        bundle.selection.action_kind = bundle.selection.action_kind.next_up();
+                                                    } else if group.input.pressed_this_frame(Button::DOWN) {
+                                                        bundle.selection.action_kind = bundle.selection.action_kind.next_down();
                                                     }
                                                 }
+                                                MONEY_AMOUNT => {
+                                                    if group.input.pressed_this_frame(Button::UP) {
+                                                        bundle.selection.bet = bundle.selection.bet.saturating_add(MIN_MONEY_UNIT.get());
+                                                    } else if group.input.pressed_this_frame(Button::DOWN) {
+                                                        let new_value = bundle.selection.bet.get().saturating_sub(MIN_MONEY_UNIT.get());
+                                                        if let Some(new_bet) = NonZeroMoney::new(new_value) {
+                                                            bundle.selection.bet = new_bet;
+                                                        }
+                                                    }
+                                                }
+                                                _ => {}
                                             }
-                                            _ => {}
                                         }
+    
+                                        player_action_opt
                                     }
-
-                                    player_action_opt
+                                    _ => None,
+                                };
+    
+                                if let Zero = group.ctx.hot {
+                                    group.ctx.set_next_hot(AceyDeuceyMenu(ACTION_KIND));
                                 }
-                                _ => None,
-                            };
-
-                            if let Zero = group.ctx.hot {
-                                group.ctx.set_next_hot(AceyDeuceyMenu(ACTION_KIND));
+    
+                                player_action_opt
                             }
-
-                            player_action_opt
-                        }
-                        (None, Connectors) => {
-                            do_burn_menu!(CONNECTORS_AMOUNT)
-                        }
-                        (None, Pair) => {
-                            do_burn_menu!(PAIR_AMOUNT)
-                        }
-                    };
-
-                    // You can't bet more than you have
-                    if bundle.selection.bet.get() > state.table.seats.moneys[current_i] {
-                        if let Some(new_bet) = NonZeroMoney::new(
-                            state.table.seats.moneys[current_i]
-                        ) {
-                            bundle.selection.bet = new_bet;
-                        }
-                    }
-
-                    let pot_limit = match bundle.round {
-                        Round::One => bundle.pot / 2,
-                        Round::AfterOne => bundle.pot,
-                    };
-
-                    // You can't bet more than the pot limit
-                    if bundle.selection.bet.get() > pot_limit {
-                        if let Some(new_bet) = NonZeroMoney::new(
-                            pot_limit
-                        ) {
-                            bundle.selection.bet = new_bet;
-                        }
-                    }
-
-                    match action_opt {
-                        Some(Action::Pass) => {
-                            // TODO when it's a CPU player passing, show the cards 
-                            // they passed on to the player, and have them confirm.
-                            next_bundle!(
-                                new_bundle =
-                                    bundle.deck.clone(),
-                                    bundle.current,
-                                    bundle.player_count,
-                                    bundle.pot
-                            );
-
-                            state.table.state = DealtPosts {
-                                bundle: new_bundle,
-                            };
-                        }
-                        Some(Action::Bet(bet)) => {
-                            let third = loop {
-                                if let Some(third) = bundle.deck.draw() {
-                                    break third;
-                                } else {
-                                    bundle.deck = gen_deck(rng);
-                                }
-                            };
-
-                            state.table.state = Reveal {
-                                bundle: bundle.clone(),
-                                third,
-                                bet,
-                            };
-                        }
-                        Some(Action::Burn(amount)) => {
-                            state.table.seats.moneys[current_i] =
+                            (None, Connectors) => {
+                                do_burn_menu!(CONNECTORS_AMOUNT)
+                            }
+                            (None, Pair) => {
+                                do_burn_menu!(PAIR_AMOUNT)
+                            }
+                        };
+    
+                        // You can't bet more than you have
+                        if bundle.selection.bet.get() > state.table.seats.moneys[current_i] {
+                            if let Some(new_bet) = NonZeroMoney::new(
                                 state.table.seats.moneys[current_i]
-                                        .saturating_sub(amount.get());
-                            bundle.pot = bundle.pot.saturating_add(amount.get());
-
-                            next_bundle!(
-                                new_bundle =
-                                    bundle.deck.clone(),
-                                    bundle.current,
-                                    bundle.player_count,
-                                    bundle.pot
-                            );
-
-                            state.table.state = DealtPosts {
-                                bundle: new_bundle,
-                            };
+                            ) {
+                                bundle.selection.bet = new_bet;
+                            }
                         }
-                        None => {}
-                    }
-                },
+    
+                        let pot_limit = match bundle.round {
+                            Round::One => bundle.pot / 2,
+                            Round::AfterOne => bundle.pot,
+                        };
+    
+                        // You can't bet more than the pot limit
+                        if bundle.selection.bet.get() > pot_limit {
+                            if let Some(new_bet) = NonZeroMoney::new(
+                                pot_limit
+                            ) {
+                                bundle.selection.bet = new_bet;
+                            }
+                        }
+    
+                        match action_opt {
+                            Some(Action::Pass) => {
+                                match &state.table.seats.personalities[current_i] {
+                                    Some(_) => {
+                                        bundle.selection.cpu_passed = true;
+                                    }
+                                    None => {
+                                        next_bundle!(
+                                            new_bundle =
+                                                bundle.deck.clone(),
+                                                bundle.current,
+                                                bundle.player_count,
+                                                bundle.pot
+                                        );
+            
+                                        state.table.state = DealtPosts {
+                                            bundle: new_bundle,
+                                        };
+                                    }
+                                }   
+                            }
+                            Some(Action::Bet(bet)) => {
+                                let third = loop {
+                                    if let Some(third) = bundle.deck.draw() {
+                                        break third;
+                                    } else {
+                                        bundle.deck = gen_deck(rng);
+                                    }
+                                };
+    
+                                state.table.state = Reveal {
+                                    bundle: bundle.clone(),
+                                    third,
+                                    bet,
+                                };
+                            }
+                            Some(Action::Burn(amount)) => {
+                                state.table.seats.moneys[current_i] =
+                                    state.table.seats.moneys[current_i]
+                                            .saturating_sub(amount.get());
+                                bundle.pot = bundle.pot.saturating_add(amount.get());
+    
+                                next_bundle!(
+                                    new_bundle =
+                                        bundle.deck.clone(),
+                                        bundle.current,
+                                        bundle.player_count,
+                                        bundle.pot
+                                );
+    
+                                state.table.state = DealtPosts {
+                                    bundle: new_bundle,
+                                };
+                            }
+                            None => {}
+                        }
+                    },
+                }
             }
         },
         Reveal { bundle, third, bet } => {

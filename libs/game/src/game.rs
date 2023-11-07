@@ -148,6 +148,7 @@ mod ui {
         AcceptBurn,
         HighLowSelect,
         HighLowSubmit,
+        AcknowledgeCPUPass,
     }
 
     #[derive(Copy, Clone, Default, Debug)]
