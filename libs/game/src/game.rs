@@ -593,12 +593,17 @@ fn title_update_and_render(
                 // select a mode and skip the title screen, without user input
                 "--skip-to" => {
                     if let Some(arg) = args.next() {
+                        // We currently prefer this to a FromStr impl because
+                        // this way we keep everyting inside the feature cfg
                         match arg.as_str() {
                             "holdem" => {
                                 cmd = TitleCmd::StartMode(ModeName::Holdem);
                             }
                             "acey-deucey" => {
                                 cmd = TitleCmd::StartMode(ModeName::AceyDeucey);
+                            }
+                            "dealers-choice" => {
+                                cmd = TitleCmd::StartMode(ModeName::DealersChoice);
                             }
                             arg => {
                                 panic!("Unrecognized arg for skip-to: {arg:?}");
