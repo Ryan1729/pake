@@ -32,6 +32,8 @@ mod shared_game_types {
 }
 use shared_game_types::{ModeCmd};
 
+mod dealers_choice;
+
 mod holdem;
 
 mod acey_deucey;
@@ -39,6 +41,7 @@ mod acey_deucey;
 #[derive(Clone, Copy, Default)]
 pub enum ModeName {
     #[default]
+    DealersChoice,
     Holdem,
     AceyDeucey
 }
@@ -47,6 +50,7 @@ impl ModeName {
     fn text(self) -> &'static str {
         use ModeName::*;
         match self {
+            DealersChoice => "dealer's choice",
             Holdem => "hold'em",
             AceyDeucey => "acey-deucey",
         }
@@ -55,7 +59,8 @@ impl ModeName {
     fn up(&mut self) {
         use ModeName::*;
         *self = match self {
-            Holdem => AceyDeucey,
+            DealersChoice => AceyDeucey,
+            Holdem => DealersChoice,
             AceyDeucey => Holdem,
         };
     }
@@ -63,8 +68,9 @@ impl ModeName {
     fn down(&mut self) {
         use ModeName::*;
         *self = match self {
+            DealersChoice => Holdem,
             Holdem => AceyDeucey,
-            AceyDeucey => Holdem,
+            AceyDeucey => DealersChoice,
         };
     }
 }
@@ -72,6 +78,7 @@ impl ModeName {
 #[derive(Clone)]
 pub enum Mode {
     Title(ModeName),
+    DealersChoice(dealers_choice::Table),
     Holdem(holdem::Table),
     AceyDeucey(acey_deucey::Table)
 }
@@ -343,6 +350,9 @@ pub fn update_and_render(
                 TitleCmd::NoOp => {},
                 TitleCmd::StartMode(name) => {
                     *mode = match name {
+                        ModeName::DealersChoice => {
+                            Mode::DealersChoice(<_>::default())
+                        },
                         ModeName::Holdem => {
                             Mode::Holdem(<_>::default())
                         },
@@ -352,6 +362,18 @@ pub fn update_and_render(
                     };
                 },
             }
+        }
+        Mode::DealersChoice(table) => {
+            cmd = dealers_choice::update_and_render(
+                commands,
+                dealers_choice::State {
+                    rng: &mut state.rng,
+                    ctx: &mut state.ctx,
+                    table,
+                },
+                input,
+                speaker,
+            );
         }
         Mode::Holdem(table) => {
             cmd = holdem::update_and_render(
@@ -382,7 +404,7 @@ pub fn update_and_render(
     match cmd {
         ModeCmd::NoOp => {},
         ModeCmd::BackToTitleScreen => {
-            state.mode = Mode::Title(ModeName::Holdem);
+            state.mode = Mode::Title(ModeName::default());
         }
     }
 }
