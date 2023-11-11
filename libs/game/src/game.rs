@@ -120,6 +120,28 @@ impl State {
     }
 }
 
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+enum SubGame {
+    Holdem,
+    AceyDeucey,
+}
+
+impl SubGame {
+    // TODO macro to make this list automatically
+    const ALL: [Self; 2] = [
+        Self::Holdem,
+        Self::AceyDeucey,
+    ];
+
+    pub fn text(self) -> &'static [u8] {
+        use SubGame::*;
+        match self {
+            Holdem => ModeName::Holdem,
+            AceyDeucey => ModeName::AceyDeucey,
+        }.text().as_bytes()
+    }
+}
+
 mod ui {
     use super::*;
 
@@ -156,6 +178,7 @@ mod ui {
         HighLowSelect,
         HighLowSubmit,
         AcknowledgeCPUPass,
+        SubGameCheckbox(SubGame)
     }
 
     #[derive(Copy, Clone, Default, Debug)]
@@ -277,6 +300,29 @@ mod ui {
             x,
             rect.y + rect.h - chevron::HEIGHT,
         );
+    }
+
+    /// Returns whether the checked state should be toggled.
+    pub(crate) fn do_checkbox<'commands, 'ctx, 'speaker, 'text>(
+        group: &mut Group<'commands, 'ctx, 'speaker>,
+        x: unscaled::X,
+        y: unscaled::Y,
+        id: Id,
+        is_checked: bool
+    ) -> bool {
+        use gfx::CheckboxMode as cm;
+
+        let result = button_press(group, id);
+
+        if group.ctx.active == id && group.input.gamepad.contains(Button::A) {
+            group.commands.draw_checkbox(x, y, cm::Pressed(is_checked));
+        } else if group.ctx.hot == id {
+            group.commands.draw_checkbox(x, y, cm::Hot(is_checked));
+        } else {
+            group.commands.draw_checkbox(x, y, cm::Cold(is_checked));
+        }
+
+        result
     }
 
     #[macro_export]

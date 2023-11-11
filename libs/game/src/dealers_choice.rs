@@ -1,4 +1,4 @@
-use gfx::{card, pre_nul_len, Commands, SPACING_W, SPACING_H};
+use gfx::{card, checkbox, pre_nul_len, Commands, SPACING_W, SPACING_H};
 use models::{Money, NonZeroMoney};
 use platform_types::{Button, Dir, Input, PaletteIndex, Speaker, SFX, command, unscaled, TEXT};
 
@@ -6,8 +6,9 @@ use std::io::Write;
 
 use xs::Xs;
 
+use crate::SubGame;
 use crate::shared_game_types::{CpuPersonality, Personality, ModeCmd, SkipState};
-use crate::ui::{self, draw_money_in_rect, stack_money_text, ButtonSpec, Id::*, do_button};
+use crate::ui::{self, draw_money_in_rect, stack_money_text, ButtonSpec, Id::*, do_button, do_checkbox};
 
 // TODO restrict selection to minimum of selected games' max player count
 type PlayerCount = u8;
@@ -38,12 +39,39 @@ impl Default for TableState {
 pub struct Table {
     //pub seats: Seats,
     pub state: TableState,
+    pub chooseable_games: SubGameBitset,
 }
 
 pub struct State<'state> {
     pub rng: &'state mut Xs,
     pub ctx: &'state mut ui::Context,
-    pub table: &'state mut Table
+    pub table: &'state mut Table,
+}
+
+type SubGameBits = u8;
+#[derive(Clone, Copy, Debug, Default)]
+pub struct SubGameBitset(SubGameBits);
+
+impl SubGameBitset {
+    fn contains(&self, game: SubGame) -> bool {
+        let bit = Self::bit(game);
+
+        self.0 & bit == bit
+    }
+
+    fn toggle(&mut self, game: SubGame) {
+        let bit = Self::bit(game);
+
+        self.0 ^= bit;
+    }
+
+    fn bit(game: SubGame) -> SubGameBits {
+        use SubGame::*;
+        match game {
+            Holdem => 1 << 0,
+            AceyDeucey => 1 << 1,
+        }
+    }
 }
 
 pub fn update_and_render(
@@ -93,15 +121,59 @@ use TableState::*;
                 cmd = ModeCmd::BackToTitleScreen;
             }
 
-            // TODO allow selecting which sub-games are allowed to be selected by the dealer
-
-            let player_count_rect = unscaled::Rect {
-                x: unscaled::X(100),
+            let game_set_rect = unscaled::Rect {
+                x: unscaled::X(50),
                 y: unscaled::Y(100),
-                w: unscaled::W(50),
+                w: unscaled::W(75),
                 h: unscaled::H(100),
             };
 
+            {
+                let label_h = unscaled::W(50);
+                let line_h = gfx::CHAR_H + SPACING_H;
+                let mut y = game_set_rect.y;
+                for game in SubGame::ALL {
+                    if do_checkbox(
+                        group,
+                        game_set_rect.x, 
+                        y,
+                        SubGameCheckbox(game),
+                        state.table.chooseable_games.contains(game),
+                    ) {
+                        state.table.chooseable_games.toggle(game);
+                    }
+                    
+                    let label_rect = unscaled::Rect {
+                        x: game_set_rect.x + checkbox::WIDTH + SPACING_W,
+                        y: y - (SPACING_H / 2) + unscaled::H(1),
+                        w: label_h,
+                        h: line_h,
+                    };
+
+                    let game_text = game.text();
+
+                    {
+                        let xy = gfx::center_line_in_rect(
+                            game_text.len() as _,
+                            label_rect,
+                        );
+                        group.commands.print_chars(
+                            game_text,
+                            xy.x,
+                            xy.y,
+                            TEXT
+                        );
+                    }
+
+                    y += line_h;
+                }
+            }
+
+            let player_count_rect = unscaled::Rect {
+                x: game_set_rect.x + game_set_rect.w,
+                w: unscaled::W(50),
+                ..game_set_rect
+            };
     
             let mut player_count_text = [0 as u8; 20];
             {
@@ -147,10 +219,8 @@ use TableState::*;
             );
 
             let starting_money_rect = unscaled::Rect {
-                x: unscaled::X(150),
-                y: unscaled::Y(100),
-                w: unscaled::W(50),
-                h: unscaled::H(100),
+                x: player_count_rect.x + player_count_rect.w,
+                ..player_count_rect
             };
 
             draw_money_in_rect!(group, starting_money, starting_money_rect);
@@ -176,6 +246,8 @@ use TableState::*;
             ) {
                 dbg!("submit");
             } else {
+                // TODO hook up selecting which sub-games are allowed to be selected by the dealer
+
                 let menu = [BackToTitleScreen, PlayerCountSelect, StartingMoneySelect, Submit];
 
                 match group.ctx.hot {

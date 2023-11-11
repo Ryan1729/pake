@@ -395,6 +395,47 @@ impl Commands {
 }
 
 #[derive(Clone, Copy)]
+pub enum CheckboxMode {
+    Cold(bool),
+    Hot(bool),
+    Pressed(bool),
+}
+
+impl Commands {
+    pub fn draw_checkbox(
+        &mut self,
+        x: unscaled::X,
+        y: unscaled::Y,
+        mode: CheckboxMode,
+    ) {
+        type Inner = sprite::Inner;
+        use CheckboxMode::*;
+    
+        let (sx, sy) = match mode {
+            Cold(false) => (0, 0),
+            Cold(true) => (0, 1),
+            Hot(false) => (0, 2),
+            Hot(true) => (0, 3),
+            Pressed(false) => (0, 4),
+            Pressed(true) => (0, 5),
+        };
+    
+        self.sspr(
+            sprite::XY {
+                x: sprite::X(checkbox::BASE_X as Inner + sx * checkbox::WIDTH.get()),
+                y: sprite::Y(checkbox::BASE_Y as Inner + sy * checkbox::HEIGHT.get()),
+            },
+            Rect::from_unscaled(unscaled::Rect {
+                x,
+                y,
+                w: checkbox::WIDTH,
+                h: checkbox::HEIGHT,
+            })
+        );
+    }
+}
+
+#[derive(Clone, Copy)]
 pub enum NineSlice {
     Window,
     Button,
@@ -583,6 +624,18 @@ pub mod card {
         HEIGHT, 
         h_const_add(LEFT_SUIT_EDGE_H, CHAR_H)
     );
+}
+
+pub mod checkbox {
+    use super::*;
+
+    use unscaled::{W, H};
+
+    pub const WIDTH: W = W(8);
+    pub const HEIGHT: H = H(8);
+
+    pub const BASE_X: u16 = 120;
+    pub const BASE_Y: u16 = 0;
 }
 
 pub mod chevron {
