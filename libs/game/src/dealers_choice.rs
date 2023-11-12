@@ -53,7 +53,7 @@ type SubGameBits = u8;
 pub struct SubGameBitset(SubGameBits);
 
 impl SubGameBitset {
-    fn contains(&self, game: SubGame) -> bool {
+    fn contains(self, game: SubGame) -> bool {
         let bit = Self::bit(game);
 
         self.0 & bit == bit
@@ -71,6 +71,10 @@ impl SubGameBitset {
             Holdem => 1 << 0,
             AceyDeucey => 1 << 1,
         }
+    }
+
+    fn len(self) -> u32 {
+        self.0.count_ones()
     }
 }
 
@@ -231,7 +235,10 @@ use TableState::*;
                 StartingMoneySelect,
             );
 
-            if do_button(
+            let is_valid_to_submit = state.table.chooseable_games.len() > 1;
+
+            if is_valid_to_submit 
+            && do_button(
                 group,
                 ButtonSpec {
                     id: Submit,
@@ -246,9 +253,7 @@ use TableState::*;
             ) {
                 dbg!("submit");
             } else {
-                // TODO hook up selecting which sub-games are allowed to be selected by the dealer
-
-                let menu = [BackToTitleScreen, PlayerCountSelect, StartingMoneySelect, Submit];
+                let menu = [BackToTitleScreen, SubGameCheckbox(SubGame::default()), PlayerCountSelect, StartingMoneySelect, Submit];
 
                 match group.ctx.hot {
                     BackToTitleScreen => {
@@ -262,17 +267,14 @@ use TableState::*;
                             None => {}
                         }
                     }
-                    StartingMoneySelect => {
-                        let menu_i = 2;
+                    SubGameCheckbox(game) => {
+                        let menu_i = 1;
                         match input.dir_pressed_this_frame() {
                             Some(Dir::Up) => {
-                                *starting_money = starting_money.saturating_add(MIN_MONEY_UNIT.get());
+                                group.ctx.set_next_hot(SubGameCheckbox(game.wrapping_up()));
                             },
                             Some(Dir::Down) => {
-                                *starting_money = starting_money.saturating_sub(MIN_MONEY_UNIT.get());
-                                if *starting_money == 0 {
-                                    *starting_money = MIN_MONEY_UNIT.get();
-                                }
+                                group.ctx.set_next_hot(SubGameCheckbox(game.wrapping_down()));
                             },
                             Some(Dir::Left) => {
                                 group.ctx.set_next_hot(menu[menu_i - 1]);
@@ -284,13 +286,34 @@ use TableState::*;
                         }
                     }
                     PlayerCountSelect => {
-                        let menu_i = 1;
+                        let menu_i = 2;
                         match input.dir_pressed_this_frame() {
                             Some(Dir::Up) => {
                                 *player_count = player_count.saturating_add(1);
                             },
                             Some(Dir::Down) => {
                                 *player_count = player_count.saturating_sub(1);
+                            },
+                            Some(Dir::Left) => {
+                                group.ctx.set_next_hot(menu[menu_i - 1]);
+                            }
+                            Some(Dir::Right) => {
+                                group.ctx.set_next_hot(menu[menu_i + 1]);
+                            }
+                            None => {}
+                        }
+                    }
+                    StartingMoneySelect => {
+                        let menu_i = 3;
+                        match input.dir_pressed_this_frame() {
+                            Some(Dir::Up) => {
+                                *starting_money = starting_money.saturating_add(MIN_MONEY_UNIT.get());
+                            },
+                            Some(Dir::Down) => {
+                                *starting_money = starting_money.saturating_sub(MIN_MONEY_UNIT.get());
+                                if *starting_money == 0 {
+                                    *starting_money = MIN_MONEY_UNIT.get();
+                                }
                             },
                             Some(Dir::Left) => {
                                 group.ctx.set_next_hot(menu[menu_i - 1]);
@@ -312,7 +335,7 @@ use TableState::*;
                         }
                     }
                     Zero => {
-                        group.ctx.set_next_hot(PlayerCountSelect);
+                        group.ctx.set_next_hot(menu[1]);
                     }
                     _ => {}
                 }

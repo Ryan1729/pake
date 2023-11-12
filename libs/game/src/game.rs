@@ -120,8 +120,9 @@ impl State {
     }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
 enum SubGame {
+    #[default]
     Holdem,
     AceyDeucey,
 }
@@ -132,6 +133,36 @@ impl SubGame {
         Self::Holdem,
         Self::AceyDeucey,
     ];
+
+    pub fn wrapping_up(self) -> Self {
+        let mut index = self.index_of();
+        if index == 0 {
+            index = Self::ALL.len() - 1;
+        } else {
+            index = index.saturating_sub(1);
+        }
+
+        Self::ALL[index]
+    }
+
+    pub fn wrapping_down(self) -> Self {
+        let mut index = self.index_of();
+        index = index.saturating_add(1);
+        if index >= Self::ALL.len() {
+            index = 0;
+        }
+
+        Self::ALL[index]
+    }
+
+    fn index_of(self) -> usize {
+        let mut i = 0;
+        for game in Self::ALL {
+            if game == self { break }
+            i += 1;
+        }
+        i
+    }
 
     pub fn text(self) -> &'static [u8] {
         use SubGame::*;
