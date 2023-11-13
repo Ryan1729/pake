@@ -8,7 +8,7 @@ use xs::Xs;
 
 use std::io::Write;
 
-use crate::shared_game_types::{CpuPersonality, Personality, ModeCmd, SkipState};
+use crate::shared_game_types::{CpuPersonality, Personality, ModeCmd, SkipState, MIN_MONEY_UNIT};
 use crate::ui::{self, ButtonSpec, Id::*, do_button};
 
 #[derive(Clone, Default)]
@@ -157,9 +157,9 @@ pub fn update_and_render(
         }
     }
 
-    let min_money_unit: NonZeroMoney = NonZeroMoney::MIN.saturating_add(5 - 1);
-    let small_blind_amount: NonZeroMoney = min_money_unit;
-    let large_blind_amount: NonZeroMoney = small_blind_amount.saturating_add(min_money_unit.get());
+    // TODO Increase these as the game goes on
+    let small_blind_amount: NonZeroMoney = MIN_MONEY_UNIT;
+    let large_blind_amount: NonZeroMoney = small_blind_amount.saturating_add(small_blind_amount.get());
 
     macro_rules! do_holdem_hands {
         ($group: ident $(,)? $bundle: ident , $community_opt: expr) => ({
@@ -267,7 +267,7 @@ pub fn update_and_render(
 
             // The total bet needed to call
             let call_amount = pot.call_amount();
-            let minimum_raise_total = call_amount + min_money_unit.get();
+            let minimum_raise_total = call_amount + MIN_MONEY_UNIT.get();
             // The amount extra needed to call
             let call_remainder = call_amount.saturating_sub(
                 pot.amount_for(current)
@@ -515,7 +515,7 @@ pub fn update_and_render(
                                         rng,
                                         ActionSpec {
                                             one_past_max_money: NonZeroMoney::MIN.saturating_add(state.table.seats.moneys[current_i]),
-                                            min_money_unit,
+                                            min_money_unit: MIN_MONEY_UNIT,
                                             minimum_raise_total,
                                         }
                                     )
@@ -759,9 +759,9 @@ pub fn update_and_render(
                                     }
                                     MONEY_AMOUNT => {
                                         if group.input.pressed_this_frame(Button::UP) {
-                                            $bundle.selection.bet = $bundle.selection.bet.saturating_add(min_money_unit.get());
+                                            $bundle.selection.bet = $bundle.selection.bet.saturating_add(MIN_MONEY_UNIT.get());
                                         } else if group.input.pressed_this_frame(Button::DOWN) {
-                                            $bundle.selection.bet = $bundle.selection.bet.saturating_sub(min_money_unit.get());
+                                            $bundle.selection.bet = $bundle.selection.bet.saturating_sub(MIN_MONEY_UNIT.get());
                                         }
                                     }
                                     _ => {}
@@ -1445,12 +1445,12 @@ pub fn update_and_render(
                         let menu_i = 2;
                         match input.dir_pressed_this_frame() {
                             Some(Dir::Up) => {
-                                *starting_money = starting_money.saturating_add(min_money_unit.get());
+                                *starting_money = starting_money.saturating_add(MIN_MONEY_UNIT.get());
                             },
                             Some(Dir::Down) => {
-                                *starting_money = starting_money.saturating_sub(min_money_unit.get());
+                                *starting_money = starting_money.saturating_sub(MIN_MONEY_UNIT.get());
                                 if *starting_money == 0 {
-                                    *starting_money = min_money_unit.get();
+                                    *starting_money = MIN_MONEY_UNIT.get();
                                 }
                             },
                             Some(Dir::Left) => {
@@ -1679,14 +1679,14 @@ pub fn update_and_render(
 
                         let mut remaining = amount;
 
-                        debug_assert!(remaining % min_money_unit == 0);
+                        debug_assert!(remaining % MIN_MONEY_UNIT == 0);
 
                         // TODO? More efficient version of this?
                         // Will this actually ever be a bottleneck?
                         let mut i = 0;
                         while remaining > 0 {
-                            remaining = remaining.saturating_sub(min_money_unit.get());
-                            award_amounts[i] = award_amounts[i].saturating_add(min_money_unit.get());
+                            remaining = remaining.saturating_sub(MIN_MONEY_UNIT.get());
+                            award_amounts[i] = award_amounts[i].saturating_add(MIN_MONEY_UNIT.get());
 
                             i += 1;
                             if i >= usize::from(winner_count) {

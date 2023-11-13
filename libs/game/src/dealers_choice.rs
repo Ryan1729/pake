@@ -7,23 +7,16 @@ use std::io::Write;
 use xs::Xs;
 
 use crate::SubGame;
-use crate::shared_game_types::{CpuPersonality, Personality, ModeCmd, SkipState};
+use crate::shared_game_types::{CpuPersonality, Personality, ModeCmd, SkipState, MIN_MONEY_UNIT};
 use crate::ui::{self, draw_money_in_rect, stack_money_text, ButtonSpec, Id::*, do_button, do_checkbox};
 
 // TODO restrict selection to minimum of selected games' max player count
 type PlayerCount = u8;
 
-// TODO unify the MIN_MONEY_UNIT across different games
-// TODO? Switch to a representation that has MIN_MONEY_UNIT as 1, but scales up for
-//       display only?
-const MIN_MONEY_UNIT: NonZeroMoney = NonZeroMoney::MIN.saturating_add(5 - 1);
-const INITIAL_ANTE_AMOUNT: NonZeroMoney = MIN_MONEY_UNIT.saturating_mul(
-    MIN_MONEY_UNIT
-);
-
 #[derive(Clone)]
 pub enum TableState {
     Undealt { player_count: PlayerCount, starting_money: Money },
+    //Playing {  },
 }
 
 impl Default for TableState {

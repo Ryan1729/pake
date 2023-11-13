@@ -9,6 +9,8 @@ use xs::{Xs, Seed};
 
 // TODO? should this just be in models?
 mod shared_game_types {
+    use models::NonZeroMoney;
+
     pub type Personality = Option<CpuPersonality>;
 
     #[derive(Clone, Debug)]
@@ -29,6 +31,13 @@ mod shared_game_types {
         NoOp,
         BackToTitleScreen
     }
+
+    // TODO? Switch to a representation that has MIN_MONEY_UNIT as 1, but scales up for
+    //       display only?
+    pub const MIN_MONEY_UNIT: NonZeroMoney = NonZeroMoney::MIN.saturating_add(5 - 1);
+    pub const INITIAL_ANTE_AMOUNT: NonZeroMoney = MIN_MONEY_UNIT.saturating_mul(
+        MIN_MONEY_UNIT
+    );
 }
 use shared_game_types::{ModeCmd};
 

@@ -7,7 +7,7 @@ use std::io::Write;
 
 use xs::Xs;
 
-use crate::shared_game_types::{CpuPersonality, Personality, ModeCmd, SkipState};
+use crate::shared_game_types::{CpuPersonality, Personality, ModeCmd, SkipState, INITIAL_ANTE_AMOUNT, MIN_MONEY_UNIT};
 use crate::ui::{self, draw_money_in_rect, stack_money_text, ButtonSpec, Id::*, do_button};
 
 type Posts = [Card; 2];
@@ -190,11 +190,6 @@ pub struct Seats {
 }
 
 type Pot = Money;
-
-const MIN_MONEY_UNIT: NonZeroMoney = NonZeroMoney::MIN.saturating_add(5 - 1);
-const INITIAL_ANTE_AMOUNT: NonZeroMoney = MIN_MONEY_UNIT.saturating_mul(
-    MIN_MONEY_UNIT
-);
 
 #[derive(Copy, Clone, Debug, Default)]
 pub enum Action {
