@@ -58,7 +58,7 @@ fn deal(rng: &mut Xs) -> (Posts, Deck) {
 /// Each turn up to 3 cards may be dealt, so if more than 17 players play, then the
 /// deck will need to be reshuffled every single round. This seems as good a place
 /// to cap things as anywhere.
-const MAX_PLAYERS: u8 = 17;
+pub const MAX_PLAYERS: u8 = 17;
 
 pub type HandIndex = u8;
 pub const MAX_HAND_INDEX: u8 = MAX_PLAYERS - 1;

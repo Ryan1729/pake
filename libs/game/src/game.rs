@@ -89,7 +89,7 @@ pub enum Mode {
     Title(ModeName),
     DealersChoice(dealers_choice::Table),
     Holdem(holdem::Table),
-    AceyDeucey(acey_deucey::Table)
+    AceyDeucey(acey_deucey::Table),
 }
 
 impl Default for Mode {

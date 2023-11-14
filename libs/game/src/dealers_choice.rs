@@ -6,17 +6,31 @@ use std::io::Write;
 
 use xs::Xs;
 
-use crate::SubGame;
+use crate::{acey_deucey, holdem, SubGame};
 use crate::shared_game_types::{CpuPersonality, Personality, ModeCmd, SkipState, MIN_MONEY_UNIT};
 use crate::ui::{self, draw_money_in_rect, stack_money_text, ButtonSpec, Id::*, do_button, do_checkbox};
 
 // TODO restrict selection to minimum of selected games' max player count
 type PlayerCount = u8;
 
+type Moneys = [Money; PlayerCount::MAX as usize];
+
+#[derive(Clone, Default)]
+enum SubGameState {
+    #[default]
+    Choosing,
+    Holdem(holdem::Table),
+    AceyDeucey(acey_deucey::Table),
+}
+
 #[derive(Clone)]
 pub enum TableState {
     Undealt { player_count: PlayerCount, starting_money: Money },
-    //Playing {  },
+    Playing { 
+        player_count: PlayerCount,
+        moneys: Moneys,
+        sub_game_state: SubGameState,
+    },
 }
 
 impl Default for TableState {
@@ -69,6 +83,31 @@ impl SubGameBitset {
     fn len(self) -> u32 {
         self.0.count_ones()
     }
+
+    fn iter(self) -> impl Iterator<Item = SubGame> {
+        let mut index = 0;
+        std::iter::from_fn(move || {
+            while usize::from(index) < SubGame::ALL.len() {
+                let output = SubGame::ALL[index];
+                index += 1;
+
+                if self.0 & (1 << index) != 0 {
+                    return Some(output);
+                }
+            }
+            
+            None
+        })
+    }
+}
+
+#[test]
+fn iter_over_full_is_all() {
+    let full = SubGameBitset((-1i128) as _);
+
+    let actual = full.iter().collect();
+
+    assert_eq!(actual, SubGame::ALL.to_vec());
 }
 
 pub fn update_and_render(
@@ -100,6 +139,21 @@ use TableState::*;
             ref mut player_count,
             ref mut starting_money,
         } => {
+            fn clamp_player_count(
+                player_count: &mut PlayerCount,
+                sub_games: SubGameBitset,
+            ) {
+                for game in sub_games.iter() {
+                    use SubGame::*;
+                    let max_player_count: PlayerCount = match game {
+                        Holdem => holdem::MAX_PLAYERS,
+                        AceyDeucey => acey_deucey::MAX_PLAYERS,
+                    };
+
+                    *player_count = core::cmp::min(*player_count, max_player_count);
+                }
+            }
+
             let group = new_group!();
 
             if do_button(
@@ -138,6 +192,7 @@ use TableState::*;
                         state.table.chooseable_games.contains(game),
                     ) {
                         state.table.chooseable_games.toggle(game);
+                        clamp_player_count(player_count, state.table.chooseable_games);
                     }
                     
                     let label_rect = unscaled::Rect {
@@ -295,6 +350,8 @@ use TableState::*;
                             }
                             None => {}
                         }
+
+                        clamp_player_count(player_count, state.table.chooseable_games);
                     }
                     StartingMoneySelect => {
                         let menu_i = 3;
@@ -334,6 +391,13 @@ use TableState::*;
                 }
             }
         }
+        Playing { 
+            ref mut player_count,
+            ref mut moneys,
+            ref mut sub_game_state,
+        } => {
+            todo!()
+        },
     }
 
     cmd
