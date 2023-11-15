@@ -619,6 +619,17 @@ pub mod holdem {
         has_gone_this_round: PerPlayerBitset,
     }
 
+    #[cfg(test)]
+    impl Default for Pot {
+        fn default() -> Pot {
+            Pot {
+                actions: <_>::default(),
+                player_count: HandLen::Two,
+                has_gone_this_round: <_>::default(),
+            }
+        }
+    }
+
     impl Pot {
         pub fn with_capacity(player_count: HandLen, capacity: usize) -> Self {
             let mut output = Pot{
@@ -865,7 +876,6 @@ pub mod holdem {
 
                 let mut moneys = [0; MAX_PLAYERS as usize];
 
-                let mut index = 0;
                 for (i, spec) in specs.iter().enumerate() {
                     pot.push_bet(
                         HandIndex::try_from(i).unwrap(),
@@ -877,8 +887,6 @@ pub mod holdem {
                     } else {
                         1
                     };
-
-                    index += 1;
                 }
 
                 let actual: Money = pot.call_amount();

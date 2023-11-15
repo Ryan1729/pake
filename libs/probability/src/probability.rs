@@ -4,6 +4,7 @@ pub const TWENTY_FIVE_PERCENT: Probability = 0b0100_0000;
 pub const FIFTY_PERCENT: Probability = 0b1000_0000;
 pub const SEVENTY_FIVE_PERCENT: Probability = 0b1100_0000;
 pub const EIGHTY_SEVEN_POINT_FIVE_PERCENT: Probability = 0b1110_0000;
+pub const ONE: Probability = 0b1111_1111;
 
 pub type Count = u32;
 
@@ -24,8 +25,6 @@ impl EvalCount {
 
 #[test]
 fn probability_works_in_these_cases() {
-    use look_up::{probability::{FIFTY_PERCENT, SEVENTY_FIVE_PERCENT, ONE}};
-
     macro_rules! a {
         ($numerator: expr , $denomenator: expr => $expected: expr) => ({
             let eval_count = EvalCount {

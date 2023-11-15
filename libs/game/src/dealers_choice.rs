@@ -88,11 +88,12 @@ impl SubGameBitset {
         let mut index = 0;
         std::iter::from_fn(move || {
             while usize::from(index) < SubGame::ALL.len() {
-                let output = SubGame::ALL[index];
+                let game = SubGame::ALL[index];
+
                 index += 1;
 
-                if self.0 & (1 << index) != 0 {
-                    return Some(output);
+                if self.contains(game) {
+                    return Some(game);
                 }
             }
             
@@ -105,9 +106,56 @@ impl SubGameBitset {
 fn iter_over_full_is_all() {
     let full = SubGameBitset((-1i128) as _);
 
-    let actual = full.iter().collect();
+    let actual: Vec<_> = full.iter().collect();
 
     assert_eq!(actual, SubGame::ALL.to_vec());
+}
+
+#[test]
+fn iter_works_on_these_examples() {
+    let actual: Vec<_> = SubGameBitset(0).iter().collect();
+
+    assert_eq!(actual, []);
+
+    let actual: Vec<_> = SubGameBitset(0b1).iter().collect();
+
+    assert_eq!(actual, [SubGame::Holdem]);
+
+    let actual: Vec<_> = SubGameBitset(0b10).iter().collect();
+
+    assert_eq!(actual, [SubGame::AceyDeucey]);
+
+    let actual: Vec<_> = SubGameBitset(0b11).iter().collect();
+
+    assert_eq!(actual, [SubGame::Holdem, SubGame::AceyDeucey]);
+}
+
+fn clamp_player_count(
+    player_count: &mut PlayerCount,
+    sub_games: SubGameBitset,
+) {
+dbg!(sub_games);
+    for game in sub_games.iter() {
+dbg!(game);
+        use SubGame::*;
+        let max_player_count: PlayerCount = match game {
+            Holdem => holdem::MAX_PLAYERS,
+            AceyDeucey => acey_deucey::MAX_PLAYERS,
+        };
+        *player_count = core::cmp::min(*player_count, max_player_count);
+    }
+}
+
+#[test]
+fn clamp_player_count_works_on_this_found_example() {
+    let mut player_count = holdem::MAX_PLAYERS;
+
+    assert!(acey_deucey::MAX_PLAYERS < holdem::MAX_PLAYERS, "pre-condition failure");
+    
+    let acey_deucey_set = SubGameBitset(0b10);
+    clamp_player_count(&mut player_count, acey_deucey_set);
+
+    assert_eq!(player_count, acey_deucey::MAX_PLAYERS);
 }
 
 pub fn update_and_render(
@@ -139,21 +187,6 @@ use TableState::*;
             ref mut player_count,
             ref mut starting_money,
         } => {
-            fn clamp_player_count(
-                player_count: &mut PlayerCount,
-                sub_games: SubGameBitset,
-            ) {
-                for game in sub_games.iter() {
-                    use SubGame::*;
-                    let max_player_count: PlayerCount = match game {
-                        Holdem => holdem::MAX_PLAYERS,
-                        AceyDeucey => acey_deucey::MAX_PLAYERS,
-                    };
-
-                    *player_count = core::cmp::min(*player_count, max_player_count);
-                }
-            }
-
             let group = new_group!();
 
             if do_button(

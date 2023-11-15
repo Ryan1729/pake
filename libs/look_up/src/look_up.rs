@@ -30,7 +30,7 @@ pub mod holdem {
 
     #[test]
     fn win_probability_seems_sane() {
-        use crate::probability::{SEVENTY_FIVE_PERCENT};
+        use probability::{SEVENTY_FIVE_PERCENT};
         // Multiple external sources say pocket aces are 85% likely to win.
         // So, let's use 75% as a reasonable lower-bound that should always
         // be achievable.
