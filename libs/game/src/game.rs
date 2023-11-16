@@ -160,6 +160,14 @@ impl SubGame {
         Self::AceyDeucey,
     ];
 
+    pub const fn min_player_count(self) -> PlayerCount {
+        use SubGame::*;
+        match self {
+            Holdem => holdem::MIN_PLAYERS,
+            AceyDeucey => acey_deucey::MIN_PLAYERS,
+        }
+    }
+
     pub const fn max_player_count(self) -> PlayerCount {
         use SubGame::*;
         match self {

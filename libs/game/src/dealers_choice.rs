@@ -132,6 +132,9 @@ fn clamp_player_count(
     sub_games: SubGameBitset,
 ) {
     for game in sub_games.iter() {
+        // TODO handle possible case of minimum of one game being larger than the
+        // maximum of another, if that actually comes up.
+        *player_count = core::cmp::max(*player_count, game.min_player_count());
         *player_count = core::cmp::min(*player_count, game.max_player_count());
     }
 }

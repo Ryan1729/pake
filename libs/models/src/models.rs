@@ -334,6 +334,7 @@ pub mod holdem {
     /// For a type with that guarentee see `HandLen`.
     pub type PlayerAmount = u8;
 
+    pub const MIN_PLAYERS: PlayerAmount = 2;
     /// With 52 cards, and 5 community cards, and 3 burn cards,
     /// that leaves 44 cards left over so the maximum amount of
     /// possible hands is 22.
