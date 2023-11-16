@@ -6,14 +6,11 @@ use std::io::Write;
 
 use xs::Xs;
 
-use crate::{acey_deucey, holdem, SubGame};
+use crate::{acey_deucey, holdem, PlayerCount, SubGame, OVERALL_MAX_PLAYER_COUNT};
 use crate::shared_game_types::{CpuPersonality, Personality, ModeCmd, SkipState, MIN_MONEY_UNIT};
 use crate::ui::{self, draw_money_in_rect, stack_money_text, ButtonSpec, Id::*, do_button, do_checkbox};
 
-// TODO restrict selection to minimum of selected games' max player count
-type PlayerCount = u8;
-
-type Moneys = [Money; PlayerCount::MAX as usize];
+type Moneys = [Money; OVERALL_MAX_PLAYER_COUNT as usize];
 
 #[derive(Clone, Default)]
 enum SubGameState {
@@ -134,15 +131,8 @@ fn clamp_player_count(
     player_count: &mut PlayerCount,
     sub_games: SubGameBitset,
 ) {
-dbg!(sub_games);
     for game in sub_games.iter() {
-dbg!(game);
-        use SubGame::*;
-        let max_player_count: PlayerCount = match game {
-            Holdem => holdem::MAX_PLAYERS,
-            AceyDeucey => acey_deucey::MAX_PLAYERS,
-        };
-        *player_count = core::cmp::min(*player_count, max_player_count);
+        *player_count = core::cmp::min(*player_count, game.max_player_count());
     }
 }
 

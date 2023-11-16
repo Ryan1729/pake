@@ -129,6 +129,23 @@ impl State {
     }
 }
 
+// TODO? Restrict selection to minimum of selected games' max player count at the type level?
+type PlayerCount = u8;
+
+pub const OVERALL_MAX_PLAYER_COUNT: PlayerCount = {
+    let mut i = 0;
+    let mut output = 0;
+    while i < SubGame::ALL.len() {
+        let max_player_count = SubGame::ALL[i].max_player_count();
+        if max_player_count > output {
+            output = max_player_count;
+        }
+
+        i += 1;
+    }
+    output
+};
+
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
 enum SubGame {
     #[default]
@@ -142,6 +159,14 @@ impl SubGame {
         Self::Holdem,
         Self::AceyDeucey,
     ];
+
+    pub const fn max_player_count(self) -> PlayerCount {
+        use SubGame::*;
+        match self {
+            Holdem => holdem::MAX_PLAYERS,
+            AceyDeucey => acey_deucey::MAX_PLAYERS,
+        }
+    }
 
     pub fn wrapping_up(self) -> Self {
         let mut index = self.index_of();
