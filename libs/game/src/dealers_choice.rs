@@ -325,7 +325,17 @@ use TableState::*;
                     text: b"submit",
                 }
             ) {
-                dbg!("submit");
+                let player_count = *player_count;
+                let mut moneys = Moneys::default();
+                for i in 0..usize::from(player_count) {
+                    moneys[i] = *starting_money;
+                }
+
+                state.table.state = Playing {
+                    player_count,
+                    moneys,
+                    sub_game_state: <_>::default(),
+                };
             } else {
                 let menu = [BackToTitleScreen, SubGameCheckbox(SubGame::default()), PlayerCountSelect, StartingMoneySelect, Submit];
 
@@ -422,7 +432,40 @@ use TableState::*;
             ref mut moneys,
             ref mut sub_game_state,
         } => {
-            todo!()
+            use SubGameState::*;
+            match sub_game_state {
+                Choosing => {
+                    // TODO actual choosing
+                    // TODO set players and money
+                    //*sub_game_state = Holdem(<_>::default());
+                    *sub_game_state = AceyDeucey(<_>::default());
+                }
+                Holdem(ref mut table) => {
+                    cmd = holdem::update_and_render(
+                        commands,
+                        holdem::State {
+                            rng,
+                            ctx: state.ctx,
+                            table
+                        },
+                        input,
+                        speaker,
+                    );
+                }
+                AceyDeucey(ref mut table) => {
+                    cmd = acey_deucey::update_and_render(
+                        commands,
+                        acey_deucey::State {
+                            rng,
+                            ctx: state.ctx,
+                            table
+                        },
+                        input,
+                        speaker,
+                    );
+                }
+            }
+            
         },
     }
 

@@ -29,7 +29,9 @@ mod shared_game_types {
     pub enum ModeCmd {
         #[default]
         NoOp,
-        BackToTitleScreen
+        BackToTitleScreen,
+        // Relevant for dealer's choice mode
+        //FinishedRound,
     }
 
     // TODO? Switch to a representation that has MIN_MONEY_UNIT as 1, but scales up for
