@@ -451,6 +451,12 @@ use TableState::*;
                         input,
                         speaker,
                     );
+
+                    if cmd == ModeCmd::FinishedRound {
+                        // TODO either copy money back, or refactor to make money a
+                        // shared mutable thing across games
+                        *sub_game_state = Choosing;
+                    }
                 }
                 AceyDeucey(ref mut table) => {
                     cmd = acey_deucey::update_and_render(
@@ -463,6 +469,12 @@ use TableState::*;
                         input,
                         speaker,
                     );
+
+                    if cmd == ModeCmd::FinishedRound {
+                        // TODO either copy money back, or refactor to make money a
+                        // shared mutable thing across games
+                        *sub_game_state = Choosing;
+                    }
                 }
             }
             

@@ -1426,6 +1426,7 @@ pub fn update_and_render(
 
                     group.speaker.request_sfx(SFX::CardPlace);
                     state.table.state = <_>::default();
+                    cmd = ModeCmd::FinishedRound;
                 } else {
                     next_bundle!(
                         new_bundle =

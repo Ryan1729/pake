@@ -1212,6 +1212,7 @@ pub fn update_and_render(
                 // TODO? Actually simulate the remaining turns, maybe with a timeout?
                 speaker.request_sfx(SFX::CardPlace);
                 state.table.state = <_>::default();
+                cmd = ModeCmd::FinishedRound;
             } else {
                 match HandLen::try_from(remaining_player_count){
                     Ok(player_count) => {
@@ -1240,6 +1241,7 @@ pub fn update_and_render(
 
                         speaker.request_sfx(SFX::CardPlace);
                         state.table.state = <_>::default();
+                        cmd = ModeCmd::FinishedRound;
                     },
                 };
             }

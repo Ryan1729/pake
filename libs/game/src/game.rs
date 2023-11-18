@@ -25,13 +25,13 @@ mod shared_game_types {
         Skip,
     }
 
-    #[derive(Clone, Copy, Default)]
+    #[derive(Clone, Copy, Default, PartialEq, Eq)]
     pub enum ModeCmd {
         #[default]
         NoOp,
         BackToTitleScreen,
         // Relevant for dealer's choice mode
-        //FinishedRound,
+        FinishedRound,
     }
 
     // TODO? Switch to a representation that has MIN_MONEY_UNIT as 1, but scales up for
@@ -523,7 +523,9 @@ pub fn update_and_render(
     }
 
     match cmd {
-        ModeCmd::NoOp => {},
+        ModeCmd::NoOp
+        // We expect FinishedRound to have been handled earlier.
+        | ModeCmd::FinishedRound => {},
         ModeCmd::BackToTitleScreen => {
             state.mode = Mode::Title(ModeName::default());
         }
