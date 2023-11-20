@@ -1,5 +1,5 @@
 use gfx::{card, checkbox, pre_nul_len, Commands, SPACING_W, SPACING_H};
-use models::{Money, NonZeroMoney};
+use models::{Money, MoneyInner, MoneyMove, NonZeroMoney, NonZeroMoneyInner};
 use platform_types::{Button, Dir, Input, PaletteIndex, Speaker, SFX, command, unscaled, TEXT};
 
 use std::io::Write;
@@ -22,7 +22,7 @@ enum SubGameState {
 
 #[derive(Clone)]
 pub enum TableState {
-    Undealt { player_count: PlayerCount, starting_money: Money },
+    Undealt { player_count: PlayerCount, starting_money: MoneyInner },
     Playing { 
         player_count: PlayerCount,
         moneys: Moneys,
@@ -326,10 +326,11 @@ use TableState::*;
                 }
             ) {
                 let player_count = *player_count;
-                let mut moneys = Moneys::default();
+                let mut moneys = [0; OVERALL_MAX_PLAYER_COUNT as usize];
                 for i in 0..usize::from(player_count) {
                     moneys[i] = *starting_money;
                 }
+                let moneys = Money::array_from_inner_array(moneys);
 
                 state.table.state = Playing {
                     player_count,
@@ -435,6 +436,8 @@ use TableState::*;
             use SubGameState::*;
             match sub_game_state {
                 Choosing => {
+                    dbg!(player_count);
+                    dbg!(moneys);
                     // TODO actual choosing
                     // TODO set players and money
                     //*sub_game_state = Holdem(<_>::default());

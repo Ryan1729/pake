@@ -1,7 +1,7 @@
 use gfx::{CHAR_SPACING_H, CHAR_SPACING_W, SPACING_H, SPACING_W, chart_block, Commands, pre_nul_len};
 use look_up::{holdem::{ALL_SORTED_HANDS, hand_win_probability}};
 pub use models::holdem::{MIN_PLAYERS, MAX_PLAYERS};
-use models::{Deck, Money, NonZeroMoney, holdem::{MAX_POTS, Action, ActionKind, ActionSpec, AllowedKindMode, CommunityCards, Facing, FullBoard, Hand, HandIndex, HandLen, Hands, PerPlayer, Pot, PotAction, RoundOutcome, gen_action, gen_hand_index}};
+use models::{Deck, Money, MoneyInner, MoneyMove, NonZeroMoney, NonZeroMoneyInner, holdem::{MAX_POTS, Action, ActionKind, ActionSpec, AllowedKindMode, CommunityCards, Facing, FullBoard, Hand, HandIndex, HandLen, Hands, PerPlayer, Pot, PotAction, RoundOutcome, gen_action, gen_hand_index}};
 use platform_types::{Button, Dir, Input, PaletteIndex, Speaker, SFX, command, unscaled, TEXT};
 use probability::{FIFTY_PERCENT, SEVENTY_FIVE_PERCENT, EIGHTY_SEVEN_POINT_FIVE_PERCENT, Probability};
 
@@ -22,7 +22,7 @@ pub struct Seats {
 #[derive(Clone, Default)]
 pub struct MenuSelection {
     pub action_kind: ActionKind,
-    pub bet: Money,
+    pub bet: MoneyInner,
 }
 
 #[derive(Clone, Copy, Default)]
@@ -45,7 +45,7 @@ pub struct StateBundle {
 
 #[derive(Clone)]
 pub enum TableState {
-    Undealt { player_count: HandLen, starting_money: Money },
+    Undealt { player_count: HandLen, starting_money: MoneyInner },
     PreFlop {
         bundle: StateBundle,
     },
@@ -159,8 +159,8 @@ pub fn update_and_render(
     }
 
     // TODO Increase these as the game goes on
-    let small_blind_amount: NonZeroMoney = MIN_MONEY_UNIT;
-    let large_blind_amount: NonZeroMoney = small_blind_amount.saturating_add(small_blind_amount.get());
+    let small_blind_amount: NonZeroMoneyInner = MIN_MONEY_UNIT;
+    let large_blind_amount: NonZeroMoneyInner = small_blind_amount.saturating_add(small_blind_amount.get());
 
     macro_rules! do_holdem_hands {
         ($group: ident $(,)? $bundle: ident , $community_opt: expr) => ({
@@ -275,6 +275,7 @@ pub fn update_and_render(
             );
             // The amount that would be leftover if the player was to call
             let call_leftover = state.table.seats.moneys[current_i]
+                .as_inner()
                 .checked_sub(call_remainder);
 
             let allowed_kind_mode =
@@ -488,7 +489,8 @@ pub fn update_and_render(
                 $bundle.selection.bet = minimum_raise_total;
             }
             if $bundle.selection.bet > state.table.seats.moneys[current_i] {
-                $bundle.selection.bet = state.table.seats.moneys[current_i];
+                $bundle.selection.bet = state.table.seats.moneys[current_i]
+                    .as_inner();
             }
 
             let action_opt = match (
@@ -507,7 +509,7 @@ pub fn update_and_render(
                         None => {
                             let probability = hand_win_probability(hand);
                             if probability >= SEVENTY_FIVE_PERCENT {
-                                let multiple = Money::from(xs::range(rng, 3..6));
+                                let multiple = MoneyInner::from(xs::range(rng, 3..6));
                                 Action::Raise(minimum_raise_total + large_blind_amount.get().saturating_mul(multiple))
                             } else if probability >= FIFTY_PERCENT {
                                 if xs::range(rng, 0..5) == 0 {
@@ -515,7 +517,11 @@ pub fn update_and_render(
                                     gen_action(
                                         rng,
                                         ActionSpec {
-                                            one_past_max_money: NonZeroMoney::MIN.saturating_add(state.table.seats.moneys[current_i]),
+                                            one_past_max_money: NonZeroMoneyInner::MIN
+                                                .saturating_add(
+                                                    state.table.seats.moneys[current_i]
+                                                    .as_inner()
+                                                ),
                                             min_money_unit: MIN_MONEY_UNIT,
                                             minimum_raise_total,
                                         }
@@ -587,10 +593,12 @@ pub fn update_and_render(
                         },
                         Action::Call => {},
                         Action::Raise(raise_amount) => {
-                            if state.table.seats.moneys[current_i]
+                            let inner = state.table.seats.moneys[current_i]
+                                .as_inner();
+                            if inner
                                 .checked_sub(raise_amount)
                                 .is_none() {
-                                action = Action::Raise(state.table.seats.moneys[current_i]);
+                                action = Action::Raise(inner);
                             }
                         },
                     }
@@ -1009,15 +1017,15 @@ pub fn update_and_render(
                     Action::Call => {
                         match call_leftover {
                             Some(new_amount) => {
-                                state.table.seats.moneys[current_i] = new_amount;
-                                PotAction::Bet(call_remainder)
+                                PotAction::Bet(
+                                    state.table.seats.moneys[current_i]
+                                        .take_all_but(new_amount)
+                                )
                             },
                             None => {
-                                let bet = PotAction::Bet(
-                                    state.table.seats.moneys[current_i]
-                                );
-                                state.table.seats.moneys[current_i] = 0;
-                                bet
+                                PotAction::Bet(
+                                    state.table.seats.moneys[current_i].take_all()
+                                )
                             }
                         }
                     },
@@ -1031,17 +1039,21 @@ pub fn update_and_render(
                         );
                         // The amount that would be leftover if the player was to call
                         let call_leftover = state.table.seats.moneys[current_i]
+                            .as_inner()
                             .checked_sub(call_remainder);
 
                         match call_leftover {
                             Some(_) => {
                                 match
                                     state.table.seats.moneys[current_i]
+                                    .as_inner()
                                     .checked_sub(raise_amount)
                                 {
                                     Some(new_amount) => {
-                                        state.table.seats.moneys[current_i] = new_amount;
-                                        PotAction::Bet(raise_amount)
+                                        PotAction::Bet(
+                                            state.table.seats.moneys[current_i]
+                                                .take_all_but(new_amount)
+                                        )
                                     },
                                     None => {
                                         debug_assert!(
@@ -1051,16 +1063,18 @@ pub fn update_and_render(
                                             raise_amount,
                                             state.table.seats.moneys[current_i],
                                         );
-                                        PotAction::Bet(raise_amount)
+                                        PotAction::Bet(
+                                            state.table.seats.moneys[current_i]
+                                            .take_all()
+                                        )
                                     }
                                 }
                             },
                             None => {
-                                let bet = PotAction::Bet(
+                                PotAction::Bet(
                                     state.table.seats.moneys[current_i]
-                                );
-                                state.table.seats.moneys[current_i] = 0;
-                                bet
+                                    .take_all()
+                                )
                             }
                         }
                     },
@@ -1129,7 +1143,7 @@ pub fn update_and_render(
                         state.table.seats.personalities
                             .iter()
                     )
-                    .filter(|(&m, p)| m > 0 && p.is_none())
+                    .filter(|(m, p)| m.as_inner() > 0 && p.is_none())
                     .count()
             };
 
@@ -1144,25 +1158,28 @@ pub fn update_and_render(
                         continue
                     }
                     pairs[pair_index] = (
-                        state.table.seats.moneys[i],
+                        state.table.seats.moneys[i].take_all(),
                         state.table.seats.personalities[i].take(),
                     );
                     pair_index += 1;
                 }
 
                 for i in 0..state.table.seats.moneys.len() {
-                    state.table.seats.moneys[i] = 0;
+                    assert_eq!(state.table.seats.moneys[i], 0);
                     state.table.seats.personalities[i] = None;
                 }
 
                 for i in 0..state.table.seats.moneys.len() {
-                    let money = pairs[i].0;
-                    if money == 0 {
+                    let money = &mut pairs[i].0;
+                    if *money == 0 {
                         break
                     }
-                    let personality = pairs[i].1.take();
-                    state.table.seats.moneys[i] = money;
-                    state.table.seats.personalities[i] = personality;
+                    MoneyMove {
+                        from: money,
+                        to: &mut state.table.seats.moneys[i],
+                        amount: NonZeroMoneyInner::MAX,
+                    }.perform();
+                    state.table.seats.personalities[i] = pairs[i].1.take();
                 }
             }
 
@@ -1174,7 +1191,7 @@ pub fn update_and_render(
                         state.table.seats.personalities
                             .iter()
                     )
-                    .filter(|(&m, p)| m > 0 && p.is_none())
+                    .filter(|(m, p)| m.as_inner() > 0 && p.is_none())
                     .count(),
                 expected_user_count,
                 "After condensing personalities user count did not match expected_user_count!"
@@ -1199,7 +1216,7 @@ pub fn update_and_render(
             let mut only_cpus_left = true;
             // Assumes we just condensed the players
             for i in 0..state.table.seats.moneys.len() {
-                let money = state.table.seats.moneys[i];
+                let money = state.table.seats.moneys[i].as_inner();
                 if money == 0 {
                     break
                 }
@@ -1256,10 +1273,9 @@ pub fn update_and_render(
     };
 
     macro_rules! award_now {
-        ($hand_index: ident , $pot: expr) => {
+        ($hand_index: ident, $pot: expr) => {
             let i = usize::from($hand_index);
-            state.table.seats.moneys[i] = state.table.seats.moneys[i]
-                .saturating_add($pot.total());
+            $pot.award(&mut state.table.seats.moneys[i]);
 
             finish_round!();
         }
@@ -1285,26 +1301,26 @@ pub fn update_and_render(
                     }
                 };
 
-                let (new_total, subbed) =
-                    match state.table.seats.moneys[usize::from(index)].checked_sub(small_blind_amount.get()) {
-                        Some(difference) => (difference, small_blind_amount.get()),
-                        None => (0, state.table.seats.moneys[usize::from(index)]),
-                    };
-                state.table.seats.moneys[usize::from(index)] = new_total;
-                pot.push_bet(index, PotAction::Bet(subbed));
+                pot.push_bet(
+                    index, 
+                    PotAction::Bet(
+                        state.table.seats.moneys[usize::from(index)]
+                            .take(small_blind_amount.get())
+                    )
+                );
 
                 index += 1;
                 if index >= hands.len().u8() {
                     index = 0;
                 }
 
-                let (new_total, subbed) =
-                    match state.table.seats.moneys[usize::from(index)].checked_sub(large_blind_amount.get()) {
-                        Some(difference) => (difference, large_blind_amount.get()),
-                        None => (0, state.table.seats.moneys[usize::from(index)]),
-                    };
-                state.table.seats.moneys[usize::from(index)] = new_total;
-                pot.push_bet(index, PotAction::Bet(subbed));
+                pot.push_bet(
+                    index, 
+                    PotAction::Bet(
+                        state.table.seats.moneys[usize::from(index)]
+                            .take(large_blind_amount.get())
+                    )
+                );
             }
         }
     }
@@ -1403,8 +1419,14 @@ pub fn update_and_render(
                     text: b"submit",
                 }
             ) {
-                for i in 0..player_count.usize() {
-                    state.table.seats.moneys[i] = *starting_money;
+                {
+                    let mut moneys = [0; MAX_PLAYERS as usize];
+                    for i in 0..player_count.usize() {
+                        moneys[i] = *starting_money;
+                    }
+    
+                    state.table.seats.moneys =
+                        Money::array_from_inner_array(moneys);
                 }
 
                 state.table.seats.personalities[0] = None;
@@ -1624,7 +1646,7 @@ pub fn update_and_render(
 
             #[derive(Debug, Default)]
             struct Award {
-                amount: Money,
+                amount: MoneyInner,
                 eval: evaluate::Eval,
             }
             type Awards = PerPlayer<[Award; MAX_POTS as usize]>;
@@ -1633,7 +1655,7 @@ pub fn update_and_render(
                 debug_assert_eq!(
                     bundle.pot.eligibilities(&state.table.seats.moneys)
                             .map(|(_, n)| n)
-                            .sum::<Money>(),
+                            .sum::<MoneyInner>(),
                     bundle.pot.total(),
                     "Eligibilities did not match pot total!"
                 );
@@ -1677,8 +1699,8 @@ pub fn update_and_render(
 
                     debug_assert!(winner_count > 0);
 
-                    let award_amounts: PerPlayer<Money> = {
-                        let mut award_amounts = PerPlayer::<Money>::default();
+                    let award_amounts: PerPlayer<MoneyInner> = {
+                        let mut award_amounts = PerPlayer::<MoneyInner>::default();
 
                         let mut remaining = amount;
 
@@ -1719,7 +1741,7 @@ pub fn update_and_render(
 
                 debug_assert_eq!(
                     {
-                        let mut total: Money = 0;
+                        let mut total: MoneyInner = 0;
 
                         for award_array in awards.iter() {
                             for Award { amount, .. } in award_array {
@@ -1856,7 +1878,8 @@ pub fn update_and_render(
             ) {
                 for (i, pots) in awards.iter().enumerate() {
                     for Award{ amount, .. } in pots {
-                        state.table.seats.moneys[i] = state.table.seats.moneys[i].saturating_add(*amount);
+                        todo!("drain these out of the bundle.pot {i} {amount}");
+                        //state.table.seats.moneys[i] = state.table.seats.moneys[i].saturating_add(*amount);
                     }
                 }
 

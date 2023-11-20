@@ -194,8 +194,210 @@ impl Iterator for CardBitsetIter {
     }
 }
 
-pub type Money = u32;
-pub type NonZeroMoney = NonZeroU32;
+mod money {
+    use super::*;
+
+    use core::cmp::Ordering;
+
+    pub type MoneyInner = u32;
+    pub type NonZeroMoneyInner = NonZeroU32;
+    
+    /// We intentionally avoid implementing Copy because money should be conserved over
+    /// the lifetime of a game, once it has been initialized.
+    #[derive(Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
+    pub struct Money(MoneyInner);
+
+    impl PartialEq<MoneyInner> for Money {
+        fn eq(&self, other: &MoneyInner) -> bool {
+            self.0 == *other
+        }
+    }
+
+    impl PartialEq<Money> for MoneyInner {
+        fn eq(&self, other: &Money) -> bool {
+            *self == other.0
+        }
+    }
+
+    impl PartialOrd<MoneyInner> for Money {
+        fn partial_cmp(&self, other: &MoneyInner) -> Option<Ordering> {
+            self.0.partial_cmp(other)
+        }
+    }
+
+    impl PartialOrd<Money> for MoneyInner {
+        fn partial_cmp(&self, other: &Money) -> Option<Ordering> {
+            self.partial_cmp(&other.0)
+        }
+    }
+
+    impl core::fmt::Display for Money {
+        fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+            write!(f, "{}", self.0)
+        }
+    }
+
+    impl std::iter::Sum<Money> for MoneyInner {
+        fn sum<I>(iter: I) -> Self
+           where I: Iterator<Item = Money> {
+            MoneyInner::sum(iter.map(|m| m.0))
+        }
+    }
+    
+    impl <'iter> std::iter::Sum<&'iter Money> for MoneyInner {
+        fn sum<I>(iter: I) -> Self
+           where I: Iterator<Item = &'iter Money> {
+            MoneyInner::sum(iter.map(|m| m.0))
+        }
+    }
+    
+    impl Money {
+        // Is this actually needed? Seems to undermine making Money non-Copy
+        // const MAX: Self = Self(MoneyInner::MAX);
+        pub const ZERO: Self = Self(0);
+    
+        pub fn as_inner(&self) -> MoneyInner {
+            self.0
+        }
+    
+        pub fn array_from_inner_array<const N: usize>(
+            array: [MoneyInner; N]
+        ) -> [Money; N] {
+            array.map(Money)
+        }
+
+        pub fn take(&mut self, to_take: MoneyInner) -> Money {
+            self.take_all_but(self.0.saturating_sub(to_take))
+        }
+    
+        pub fn take_all(&mut self) -> Money {
+            self.take_all_but(0)
+        }
+    
+        pub fn take_all_but(&mut self, to_leave: MoneyInner) -> Money {
+            let output = Money(self.0.saturating_sub(to_leave));
+
+            self.0 = core::cmp::min(self.0, to_leave);
+
+            output
+        }
+    }
+
+    #[test]
+    fn take_all_but_works_for_these_examples() {
+        macro_rules! a {
+            ($start_with: literal $to_leave: expr => $end_with: literal $taken: literal) => ({
+                let mut m = Money($start_with);
+    
+                let taken = m.take_all_but($to_leave);
+    
+                assert_eq!(m.0, $end_with);
+                assert_eq!(taken.0, $taken);
+            })
+        }
+        a!(10 0 => 0 10);
+        a!(10 4 => 4 6);
+        a!(10 10 => 10 0);
+        a!(10 99 => 10 0);
+        a!(10 MoneyInner::MAX => 10 0);
+
+        a!(0 0 => 0 0);
+        a!(0 4 => 0 0);
+        a!(0 10 => 0 0);
+        a!(0 99 => 0 0);
+        a!(0 MoneyInner::MAX => 0 0);
+    }
+
+    pub struct MoneyMove<'from, 'to> {
+        pub from: &'from mut Money,
+        pub to: &'to mut Money,
+        pub amount: NonZeroMoneyInner,
+    }
+
+    impl <'from, 'to> MoneyMove<'from, 'to> {
+        pub fn perform(self) {
+            let amount = self.amount.get();
+            let taken = self.from.take(amount);
+            self.to.0 = self.to.0.saturating_add(taken.0);
+        }
+    }
+
+    #[test]
+    fn perform_works_for_these_examples() {
+        macro_rules! a {
+            (($from_before: literal $to_before: literal) $amount: expr => $from_after: literal $to_after: literal) => ({
+                let mut from = Money($from_before);
+                let mut to = Money($to_before);
+
+                MoneyMove {
+                    from: &mut from,
+                    to: &mut to,
+                    amount: NonZeroMoneyInner::new($amount).unwrap(),
+                }.perform();
+    
+                assert_eq!(from.0, $from_after);
+                assert_eq!(to.0, $to_after);
+            })
+        }
+        
+        a!((10 10) 4 => 6 14);
+        a!((10 10) 10 => 0 20);
+        a!((10 10) 99 => 0 20);
+        a!((10 10) MoneyInner::MAX => 0 20);
+
+        a!((10 0) 4 => 6 4);
+        a!((10 0) 10 => 0 10);
+        a!((10 0) 99 => 0 10);
+        a!((10 0) MoneyInner::MAX => 0 10);
+
+        a!((0 10) 4 => 0 10);
+        a!((0 10) 10 => 0 10);
+        a!((0 10) 99 => 0 10);
+        a!((0 10) MoneyInner::MAX => 0 10);
+
+        a!((0 0) 4 => 0 0);
+        a!((0 0) 10 => 0 0);
+        a!((0 0) 99 => 0 0);
+        a!((0 0) MoneyInner::MAX => 0 0);
+    }
+    
+    /// We intentionally avoid implementing Copy because money should be conserved over
+    /// the lifetime of a game, once it has been initialized.
+    #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+    pub struct NonZeroMoney(NonZeroMoneyInner);
+
+    impl PartialEq<NonZeroMoneyInner> for NonZeroMoney {
+        fn eq(&self, other: &NonZeroMoneyInner) -> bool {
+            self.0 == *other
+        }
+    }
+
+    impl PartialEq<NonZeroMoney> for NonZeroMoneyInner {
+        fn eq(&self, other: &NonZeroMoney) -> bool {
+            *self == other.0
+        }
+    }
+
+    impl PartialOrd<NonZeroMoneyInner> for NonZeroMoney {
+        fn partial_cmp(&self, other: &NonZeroMoneyInner) -> Option<Ordering> {
+            self.0.partial_cmp(other)
+        }
+    }
+
+    impl PartialOrd<NonZeroMoney> for NonZeroMoneyInner {
+        fn partial_cmp(&self, other: &NonZeroMoney) -> Option<Ordering> {
+            self.partial_cmp(&other.0)
+        }
+    }
+
+    impl core::fmt::Display for NonZeroMoney {
+        fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+            write!(f, "{}", self.0)
+        }
+    }
+}
+
+pub use money::{Money, MoneyInner, MoneyMove, NonZeroMoney, NonZeroMoneyInner};
 
 pub mod holdem {
     use super::*;
@@ -215,24 +417,28 @@ pub mod holdem {
         [card_text_byte(hand[0]), card_text_byte(hand[1])]
     }
 
-    #[derive(Copy, Clone, Debug, Default)]
+    #[derive(Clone, Debug, Default)]
     pub enum Action {
         #[default]
         Fold,
         Call,
-        Raise(Money)
+        Raise(MoneyInner)
     }
 
     #[derive(Debug)]
     pub struct ActionSpec {
-        pub one_past_max_money: NonZeroMoney,
-        pub min_money_unit: NonZeroMoney,
-        pub minimum_raise_total: Money,
+        pub one_past_max_money: NonZeroMoneyInner,
+        pub min_money_unit: NonZeroMoneyInner,
+        pub minimum_raise_total: MoneyInner,
     }
 
     pub fn gen_action(
         rng: &mut Xs,
-        ActionSpec { one_past_max_money, min_money_unit, minimum_raise_total }: ActionSpec
+        ActionSpec {
+            one_past_max_money,
+            min_money_unit,
+            minimum_raise_total
+        }: ActionSpec
     ) -> Action {
         use Action::*;
 
@@ -247,9 +453,9 @@ pub mod holdem {
                     // Go all in
                     Call
                 } else {
-                    let max_in_units = max_money/min_money_unit.get();
-                    let min_in_units = minimum_raise_total/min_money_unit.get();
-                    let output_in_units = xs::range(rng, min_in_units..core::cmp::max(min_in_units, max_in_units).saturating_add(1)) as Money;
+                    let max_in_units: MoneyInner = max_money/min_money_unit.get();
+                    let min_in_units: MoneyInner = minimum_raise_total/min_money_unit.get();
+                    let output_in_units = xs::range(rng, min_in_units..core::cmp::max(min_in_units, max_in_units).saturating_add(1)) as MoneyInner;
                     let output_in_money = output_in_units.saturating_mul(min_money_unit.get());
 
                     Raise(output_in_money)
@@ -598,7 +804,7 @@ pub mod holdem {
         }
     }
 
-    #[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
+    #[derive(Clone, Debug, Default, PartialEq, Eq)]
     pub enum PotAction {
         #[default]
         Fold,
@@ -685,7 +891,7 @@ pub mod holdem {
             let mut previous_amount = None;
             for i in 0..amounts.len() {
                 // A player is all in or not playing, if they have 0 money left.
-                if current_money[i] == 0 {
+                if current_money[i] == Money::ZERO {
                     continue;
                 }
 
@@ -717,7 +923,7 @@ pub mod holdem {
                     let i = usize::from(index);
 
                     if amounts[i] == 0
-                    && current_money[i] == 0 {
+                    && current_money[i] == Money::ZERO {
                         // All in with nothing? Must not be playing.
                         continue;
                     }
@@ -738,7 +944,7 @@ pub mod holdem {
             }
         }
 
-        pub fn total(&self) -> Money {
+        pub fn total(&self) -> MoneyInner {
             self.amounts()
                 .iter()
                 .sum()
@@ -746,24 +952,26 @@ pub mod holdem {
 
         /// Returns the total that a player must have bet, in order to call
         /// including previous bets. That is, the maxiumum amount bet by any player.
-        pub fn call_amount(&self) -> Money {
+        pub fn call_amount(&self) -> MoneyInner {
             self.amounts()
-                .iter()
+                .into_iter()
                 .max()
-                .copied()
                 .unwrap_or_default()
         }
 
         pub fn eligibilities(
             &self,
             current_money: &PerPlayer<Money>,
-        ) -> impl Iterator<Item = (PerPlayerBitset, Money)> {
+        ) -> impl Iterator<Item = (PerPlayerBitset, MoneyInner)> {
             // A side pot exists if there is a higher amount than someone who is
             // still in, has bet. (TODO? filter out in-progress bets?)
 
             let mut amounts = self.amounts();
 
-            let current_money = current_money.clone();
+            let mut current_money_inner = [0; MAX_PLAYERS as usize];
+            for (i, m) in current_money.iter().enumerate() {
+                current_money_inner[i] = m.as_inner();
+            }
 
             std::iter::from_fn(move || {
                 loop {
@@ -771,11 +979,11 @@ pub mod holdem {
                         return None
                     }
 
-                    let mut min_all_in = Money::MAX;
+                    let mut min_all_in = MoneyInner::MAX;
                     for i in 0..amounts.len() {
                         // A player is all in if they have 0 money left,
                         // and actually bet something.
-                        if current_money[i] == 0 {
+                        if current_money_inner[i] == 0 {
                             if amounts[i] > 0 && amounts[i] < min_all_in {
                                 min_all_in = amounts[i];
                             }
@@ -783,7 +991,7 @@ pub mod holdem {
                     }
 
                     let mut contributors = PerPlayerBitset::default();
-                    let mut output: Money = 0;
+                    let mut output: MoneyInner = 0;
                     for index in 0..MAX_PLAYERS {
                         let i = usize::from(index);
                         if amounts[i] > 0 {
@@ -811,7 +1019,7 @@ pub mod holdem {
         pub fn individual_pots(
             &self,
             current_money: &PerPlayer<Money>,
-        ) -> impl Iterator<Item = Money> {
+        ) -> impl Iterator<Item = MoneyInner> {
             self.eligibilities(current_money).filter(
                 |(contributors, money)| {
                     // Side pots with one player in them are "trivial" and not
@@ -822,26 +1030,41 @@ pub mod holdem {
             .map(|(_, money)| money)
         }
 
-        pub fn amount_for(&self, index: HandIndex) -> Money {
+        pub fn amount_for(&self, index: HandIndex) -> MoneyInner {
             // TODO? Avoid calculating the other players' amounts here?
             self.amounts()[usize::from(index)]
         }
 
-        fn amounts(&self) -> PerPlayer<Money> {
-            let mut outputs: PerPlayer<Money> = [0; MAX_PLAYERS as usize];
+        fn amounts(&self) -> PerPlayer<MoneyInner> {
+            let mut outputs: PerPlayer<MoneyInner> = [0; MAX_PLAYERS as usize];
             for i in 0..MAX_PLAYERS as usize {
                 let output = &mut outputs[i];
                 for action in &self.actions[i] {
                     match action {
                         PotAction::Fold => break,
                         PotAction::Bet(bet) => {
-                            *output = output.saturating_add(*bet);
+                            *output = output.saturating_add(bet.as_inner());
                         }
                     }
                 }
             }
             outputs
         }
+
+        pub fn award(&mut self, winner: &mut Money) {
+            todo!("{winner}");
+        }
+    }
+
+    // We delibrately don't want to make this operation convenient outside of tests,
+    // because we want the total amount of money in a given game to remain constant.
+    // This is why `Money` is a struct that doesn't implement `Copy` in the first 
+    // place.
+    #[cfg(test)]
+    fn test_money_inner_to_money(inner: MoneyInner) -> Money {
+        let mut arr = Money::array_from_inner_array([inner]);
+
+        arr[0].take_all()
     }
 
     #[cfg(test)]
@@ -853,16 +1076,16 @@ pub mod holdem {
             is_all_in: bool,
         }
 
-        fn bet(bet: Money) -> Spec {
+        fn bet(bet: MoneyInner) -> Spec {
             Spec {
-                bet,
+                bet: test_money_inner_to_money(bet),
                 is_all_in: false,
             }
         }
 
-        fn all_in(bet: Money) -> Spec {
+        fn all_in(bet: MoneyInner) -> Spec {
             Spec {
-                bet,
+                bet: test_money_inner_to_money(bet),
                 is_all_in: true,
             }
         }
@@ -877,7 +1100,7 @@ pub mod holdem {
 
                 let mut moneys = [0; MAX_PLAYERS as usize];
 
-                for (i, spec) in specs.iter().enumerate() {
+                for (i, spec) in specs.into_iter().enumerate() {
                     pot.push_bet(
                         HandIndex::try_from(i).unwrap(),
                         PotAction::Bet(spec.bet),
@@ -890,7 +1113,7 @@ pub mod holdem {
                     };
                 }
 
-                let actual: Money = pot.call_amount();
+                let actual: MoneyInner = pot.call_amount();
 
                 assert_eq!(actual, expected);
             }
@@ -918,16 +1141,16 @@ pub mod holdem {
             is_all_in: bool,
         }
 
-        fn bet(bet: Money) -> Spec {
+        fn bet(bet: MoneyInner) -> Spec {
             Spec {
-                action: PotAction::Bet(bet),
+                action: PotAction::Bet(test_money_inner_to_money(bet)),
                 is_all_in: false,
             }
         }
 
-        fn all_in(bet: Money) -> Spec {
+        fn all_in(bet: MoneyInner) -> Spec {
             Spec {
-                action: PotAction::Bet(bet),
+                action: PotAction::Bet(test_money_inner_to_money(bet)),
                 is_all_in: true,
             }
         }
@@ -949,7 +1172,7 @@ pub mod holdem {
 
                 let mut moneys = [0; MAX_PLAYERS as usize];
 
-                for (i, spec) in specs.iter().enumerate() {
+                for (i, spec) in specs.into_iter().enumerate() {
                     pot.push_bet(
                         HandIndex::try_from(i).unwrap(),
                         spec.action,
@@ -962,9 +1185,11 @@ pub mod holdem {
                     };
                 }
 
-                let actual: Vec<Money> = pot.individual_pots(&moneys).collect();
+                let moneys = Money::array_from_inner_array(moneys);
 
-                let expected: Vec<Money> = expected.into_iter().collect();
+                let actual: Vec<MoneyInner> = pot.individual_pots(&moneys).collect();
+
+                let expected: Vec<MoneyInner> = expected.into_iter().collect();
 
                 assert_eq!(actual, expected);
             }
@@ -995,16 +1220,16 @@ pub mod holdem {
             is_all_in: bool,
         }
 
-        fn bet(bet: Money) -> Spec {
+        fn bet(bet: MoneyInner) -> Spec {
             Spec {
-                action: PotAction::Bet(bet),
+                action: PotAction::Bet(test_money_inner_to_money(bet)),
                 is_all_in: false,
             }
         }
 
-        fn all_in(bet: Money) -> Spec {
+        fn all_in(bet: MoneyInner) -> Spec {
             Spec {
-                action: PotAction::Bet(bet),
+                action: PotAction::Bet(test_money_inner_to_money(bet)),
                 is_all_in: true,
             }
         }
@@ -1022,11 +1247,13 @@ pub mod holdem {
                 let specs = $specs;
                 let expected = $expected;
 
+                let specs_string = format!("{specs:?}");
+
                 let mut pot = Pot::default();
 
                 let mut moneys = [0; MAX_PLAYERS as usize];
 
-                for (i, spec) in specs.iter().enumerate() {
+                for (i, spec) in specs.into_iter().enumerate() {
                     pot.push_bet(
                         HandIndex::try_from(i).unwrap(),
                         spec.action,
@@ -1039,9 +1266,11 @@ pub mod holdem {
                     };
                 }
 
+                let moneys = Money::array_from_inner_array(moneys);
+
                 let actual = pot.round_outcome(&moneys);
 
-                assert_eq!(actual, expected, "{specs:?}");
+                assert_eq!(actual, expected, "{specs_string:?}");
             }
         }
 

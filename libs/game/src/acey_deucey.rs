@@ -1,5 +1,5 @@
 use gfx::{card, pre_nul_len, Commands, SPACING_W, SPACING_H};
-use models::{Card, CardBitset, ALL_CARDS, Deck, Money, NonZeroMoney, Rank, gen_deck, get_rank, ranks};
+use models::{Card, CardBitset, ALL_CARDS, Deck, Money, MoneyInner, MoneyMove, NonZeroMoney, NonZeroMoneyInner, Rank, gen_deck, get_rank, ranks};
 use platform_types::{Button, Dir, Input, PaletteIndex, Speaker, SFX, command, unscaled, TEXT};
 use probability::{EvalCount};
 
@@ -185,6 +185,12 @@ pub fn gen_hand_index(rng: &mut Xs, player_count: PlayerCount) -> HandIndex {
 
 #[derive(Clone, Default)]
 pub struct Seats {
+    // FIXME There are some hard to pin down scenarios that cause the sum of total 
+    // money among the pot and all players to change over time, after the start of
+    // the game! The total should remain constant because money should not be 
+    // created or lost as part of the game. So, attempt to ensure that at the type
+    // level or via asserts. One way to attempt to do this at the type level is to
+    // make Money and NonZeroMoney into non-copy types, with a wrapper struct.
     moneys: [Money; MAX_PLAYERS as usize],
     personalities: [Personality; MAX_PLAYERS as usize],
     skip: SkipState,
@@ -192,17 +198,17 @@ pub struct Seats {
 
 type Pot = Money;
 
-#[derive(Copy, Clone, Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub enum Action {
     #[default]
     Pass,
-    Bet(NonZeroMoney),
-    Burn(NonZeroMoney),
+    Bet(NonZeroMoneyInner),
+    Burn(NonZeroMoneyInner),
 }
 
-const CONNECTORS_AMOUNT: NonZeroMoney = MIN_MONEY_UNIT;
+const CONNECTORS_AMOUNT: NonZeroMoneyInner = MIN_MONEY_UNIT;
 const CONNECTORS_BURN: Action = Action::Burn(CONNECTORS_AMOUNT);
-const PAIR_AMOUNT: NonZeroMoney = MIN_MONEY_UNIT.saturating_add(MIN_MONEY_UNIT.get());
+const PAIR_AMOUNT: NonZeroMoneyInner = MIN_MONEY_UNIT.saturating_add(MIN_MONEY_UNIT.get());
 const PAIR_BURN: Action = Action::Burn(PAIR_AMOUNT);
 
 #[derive(Copy, Clone, Debug, Default, Eq, PartialEq)]
@@ -282,7 +288,7 @@ pub enum Ace {
 #[derive(Clone)]
 pub struct MenuSelection {
     pub action_kind: ActionKind,
-    pub bet: NonZeroMoney,
+    pub bet: NonZeroMoneyInner,
     pub ace: Ace,
     pub temp_high_low: HighLow,
     pub cpu_passed: bool,
@@ -320,14 +326,14 @@ pub struct StateBundle {
 
 #[derive(Clone)]
 pub enum TableState {
-    Undealt { player_count: PlayerCount, starting_money: Money },
+    Undealt { player_count: PlayerCount, starting_money: MoneyInner },
     DealtPosts {
         bundle: StateBundle,
     },
     Reveal {
         bundle: StateBundle,
         third: Card,
-        bet: NonZeroMoney,
+        bet: NonZeroMoneyInner,
     },
 }
 
@@ -378,6 +384,8 @@ pub fn update_and_render(
 
     macro_rules! do_acey_deucey {
         ($group: ident $(,)? $bundle: ident , $third_opt: expr) => {
+            todo!();
+            /*
             let player_count = $bundle.player_count;
             let pot = $bundle.pot;
             let posts = $bundle.posts;
@@ -386,7 +394,7 @@ pub fn update_and_render(
             for i in 0..player_count.u8() {
                 use unscaled::Inner;
 
-                let money = state.table.seats.moneys[i as usize];
+                let money = state.table.seats.moneys[i as usize].as_inner();
 
                 let w = unscaled::W(25);
                 let h = unscaled::H(15);
@@ -466,6 +474,7 @@ pub fn update_and_render(
                     command::MID_Y,
                 );
             }
+            */
         }
     }
 
@@ -476,6 +485,9 @@ pub fn update_and_render(
             $player_count: expr,
             $pot: expr
         ) => {
+            let $bundle;
+            todo!("");
+            /*
             let mut deck = $deck;
             let previous_index = $current;
             let player_count = $player_count;
@@ -512,6 +524,7 @@ pub fn update_and_render(
                 selection: MenuSelection::default(),
                 round: Round::AfterOne,
             };
+            */
         }
     }
 
@@ -659,13 +672,14 @@ pub fn update_and_render(
                 }
             ) {
                 let player_count = *player_count;
-                let mut pot: Pot = 0;
+                let mut pot: Pot = Money::ZERO;
 
                 for i in 0..player_count.usize() {
-                    state.table.seats.moneys[i] = starting_money
-                        .saturating_sub(INITIAL_ANTE_AMOUNT.get());
-
-                    pot = pot.saturating_add(INITIAL_ANTE_AMOUNT.get());
+                    MoneyMove {
+                        from: &mut state.table.seats.moneys[i],
+                        to: &mut pot,
+                        amount: INITIAL_ANTE_AMOUNT,
+                    }.perform();
                 }
 
                 state.table.seats.personalities[0] = None;
@@ -1220,10 +1234,12 @@ pub fn update_and_render(
                                                 }
                                                 MONEY_AMOUNT => {
                                                     if group.input.pressed_this_frame(Button::UP) {
-                                                        bundle.selection.bet = bundle.selection.bet.saturating_add(MIN_MONEY_UNIT.get());
+                                                        bundle.selection.bet = bundle.selection.bet
+                                                            .saturating_add(MIN_MONEY_UNIT.get());
                                                     } else if group.input.pressed_this_frame(Button::DOWN) {
-                                                        let new_value = bundle.selection.bet.get().saturating_sub(MIN_MONEY_UNIT.get());
-                                                        if let Some(new_bet) = NonZeroMoney::new(new_value) {
+                                                        let new_value = bundle.selection.bet.get()
+                                                            .saturating_sub(MIN_MONEY_UNIT.get());
+                                                        if let Some(new_bet) = NonZeroMoneyInner::new(new_value) {
                                                             bundle.selection.bet = new_bet;
                                                         }
                                                     }
@@ -1253,21 +1269,21 @@ pub fn update_and_render(
     
                         // You can't bet more than you have
                         if bundle.selection.bet.get() > state.table.seats.moneys[current_i] {
-                            if let Some(new_bet) = NonZeroMoney::new(
-                                state.table.seats.moneys[current_i]
+                            if let Some(new_bet) = NonZeroMoneyInner::new(
+                                state.table.seats.moneys[current_i].as_inner()
                             ) {
                                 bundle.selection.bet = new_bet;
                             }
                         }
     
                         let pot_limit = match bundle.round {
-                            Round::One => bundle.pot / 2,
-                            Round::AfterOne => bundle.pot,
+                            Round::One => bundle.pot.as_inner() / 2,
+                            Round::AfterOne => bundle.pot.as_inner(),
                         };
     
                         // You can't bet more than the pot limit
                         if bundle.selection.bet.get() > pot_limit {
-                            if let Some(new_bet) = NonZeroMoney::new(
+                            if let Some(new_bet) = NonZeroMoneyInner::new(
                                 pot_limit
                             ) {
                                 bundle.selection.bet = new_bet;
@@ -1311,11 +1327,12 @@ pub fn update_and_render(
                                 };
                             }
                             Some(Action::Burn(amount)) => {
-                                state.table.seats.moneys[current_i] =
-                                    state.table.seats.moneys[current_i]
-                                            .saturating_sub(amount.get());
-                                bundle.pot = bundle.pot.saturating_add(amount.get());
-    
+                                MoneyMove {
+                                    from: &mut state.table.seats.moneys[current_i],
+                                    to: &mut bundle.pot,
+                                    amount,
+                                }.perform();
+
                                 next_bundle!(
                                     new_bundle =
                                         bundle.deck.clone(),
@@ -1403,16 +1420,18 @@ pub fn update_and_render(
                 let current_i = usize::from(bundle.current);
                 match outcome {
                     Loss => {
-                        state.table.seats.moneys[current_i] =
-                            state.table.seats.moneys[current_i]
-                                .saturating_sub(bet.get());
-                        bundle.pot = bundle.pot.saturating_add(bet.get());
+                        MoneyMove {
+                            from: &mut state.table.seats.moneys[current_i],
+                            to: &mut bundle.pot,
+                            amount: *bet,
+                        }.perform();
                     }
                     Win => {
-                        bundle.pot = bundle.pot.saturating_sub(bet.get());
-                        state.table.seats.moneys[current_i] =
-                            state.table.seats.moneys[current_i]
-                                .saturating_add(bet.get());
+                        MoneyMove {
+                            from: &mut bundle.pot,
+                            to: &mut state.table.seats.moneys[current_i],
+                            amount: *bet,
+                        }.perform();
                     }
                 }
 
