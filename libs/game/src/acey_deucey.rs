@@ -663,6 +663,17 @@ pub fn update_and_render(
                 }
             ) {
                 let player_count = *player_count;
+
+                {
+                    let mut moneys = [0; MAX_PLAYERS as usize];
+                    for i in 0..player_count.usize() {
+                        moneys[i] = *starting_money;
+                    }
+    
+                    state.table.seats.moneys =
+                        Money::array_from_inner_array(moneys);
+                }
+
                 let mut pot: Pot = Money::ZERO;
 
                 for i in 0..player_count.usize() {

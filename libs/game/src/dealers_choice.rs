@@ -436,8 +436,6 @@ use TableState::*;
             use SubGameState::*;
             match sub_game_state {
                 Choosing => {
-                    dbg!(player_count);
-                    dbg!(moneys);
                     // TODO actual choosing
                     // TODO set players and money
                     //*sub_game_state = Holdem(<_>::default());
