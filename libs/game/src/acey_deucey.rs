@@ -384,10 +384,7 @@ pub fn update_and_render(
 
     macro_rules! do_acey_deucey {
         ($group: ident $(,)? $bundle: ident , $third_opt: expr) => {
-            todo!();
-            /*
             let player_count = $bundle.player_count;
-            let pot = $bundle.pot;
             let posts = $bundle.posts;
             let current = $bundle.current;
 
@@ -433,7 +430,7 @@ pub fn update_and_render(
                 h,
             };
 
-            draw_money_in_rect!($group, pot, pot_rect);
+            draw_money_in_rect!($group, $bundle.pot, pot_rect);
 
             let CARD_1_X: unscaled::X =
                 // Need an extra `card::WIDTH` because the sprite is drawn from the
@@ -474,7 +471,6 @@ pub fn update_and_render(
                     command::MID_Y,
                 );
             }
-            */
         }
     }
 
@@ -485,13 +481,9 @@ pub fn update_and_render(
             $player_count: expr,
             $pot: expr
         ) => {
-            let $bundle;
-            todo!("");
-            /*
             let mut deck = $deck;
             let previous_index = $current;
             let player_count = $player_count;
-            let pot = $pot;
 
             let current = {
                 let mut index = previous_index + 1;
@@ -519,12 +511,11 @@ pub fn update_and_render(
                 deck,
                 posts,
                 current,
-                pot,
+                pot: $pot.take_all(),
                 player_count,
                 selection: MenuSelection::default(),
                 round: Round::AfterOne,
             };
-            */
         }
     }
 

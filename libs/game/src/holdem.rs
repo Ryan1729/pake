@@ -1,6 +1,6 @@
 use gfx::{CHAR_SPACING_H, CHAR_SPACING_W, SPACING_H, SPACING_W, chart_block, Commands, pre_nul_len};
 use look_up::{holdem::{ALL_SORTED_HANDS, hand_win_probability}};
-pub use models::holdem::{MIN_PLAYERS, MAX_PLAYERS};
+pub use models::holdem::{PlayerIndex, MIN_PLAYERS, MAX_PLAYERS};
 use models::{Deck, Money, MoneyInner, MoneyMove, NonZeroMoney, NonZeroMoneyInner, holdem::{MAX_POTS, Action, ActionKind, ActionSpec, AllowedKindMode, CommunityCards, Facing, FullBoard, Hand, HandIndex, HandLen, Hands, PerPlayer, Pot, PotAction, RoundOutcome, gen_action, gen_hand_index}};
 use platform_types::{Button, Dir, Input, PaletteIndex, Speaker, SFX, command, unscaled, TEXT};
 use probability::{FIFTY_PERCENT, SEVENTY_FIVE_PERCENT, EIGHTY_SEVEN_POINT_FIVE_PERCENT, Probability};
@@ -1876,12 +1876,15 @@ pub fn update_and_render(
                     text: b"submit",
                 }
             ) {
-                for (i, pots) in awards.iter().enumerate() {
-                    for Award{ amount, .. } in pots {
-                        todo!("drain these out of the bundle.pot {i} {amount}");
-                        //state.table.seats.moneys[i] = state.table.seats.moneys[i].saturating_add(*amount);
-                    }
-                }
+                bundle.pot.award_multiple(
+                    &mut state.table.seats.moneys,
+                    awards.iter()
+                        .enumerate()
+                        .flat_map(|(i, pots)| {
+                            let i: PlayerIndex = i as PlayerIndex;
+                            pots.iter().map(move |award| (i, award.amount))
+                        })
+                );
 
                 finish_round!();
             } else {

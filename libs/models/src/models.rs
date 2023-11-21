@@ -536,6 +536,7 @@ pub mod holdem {
         Up(Hand),
     }
 
+    pub type PlayerIndex = u8;
     /// Does not necessarily contain a valid number of players for a round.
     /// For a type with that guarentee see `HandLen`.
     pub type PlayerAmount = u8;
@@ -1052,7 +1053,56 @@ pub mod holdem {
         }
 
         pub fn award(&mut self, winner: &mut Money) {
-            todo!("{winner}");
+            for i in 0..MAX_PLAYERS as usize {
+                for action in &mut self.actions[i] {
+                    match action {
+                        PotAction::Fold => break,
+                        PotAction::Bet(ref mut bet) => {
+                            MoneyMove {
+                                from: bet,
+                                to: winner,
+                                amount: NonZeroMoneyInner::MAX
+                            }.perform();
+                        }
+                    }
+                }
+            }
+        }
+
+        pub fn award_multiple(
+            &mut self,
+            moneys: &mut PerPlayer<Money>,
+            iter: impl Iterator<Item = (PlayerIndex, MoneyInner)>
+        ) {
+            // Collect all the money into one pile
+            let mut pile: Money = Money::ZERO;
+            for i in 0..MAX_PLAYERS as usize {
+                for action in &mut self.actions[i] {
+                    match action {
+                        PotAction::Fold => break,
+                        PotAction::Bet(ref mut bet) => {
+                            MoneyMove {
+                                from: bet,
+                                to: &mut pile,
+                                amount: NonZeroMoneyInner::MAX
+                            }.perform();
+                        }
+                    }
+                }
+            }
+
+            // Pull out the amounts from the pile
+            for (i, possibly_zero_amount) in iter {
+                let Some(amount) = NonZeroMoneyInner::new(possibly_zero_amount)
+                    else { continue };
+                MoneyMove {
+                    from: &mut pile,
+                    to: &mut moneys[usize::from(i)],
+                    amount,
+                }.perform();
+            }
+
+            assert_eq!(pile.as_inner(), 0);
         }
     }
 
