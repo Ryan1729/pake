@@ -43,6 +43,8 @@ impl Default for TableState {
 pub struct Table {
     //pub seats: Seats,
     pub state: TableState,
+    // TODO default to all selected
+    // TODO make a button to toggle all bits
     pub chooseable_games: SubGameBitset,
 }
 
@@ -437,9 +439,46 @@ use TableState::*;
             match sub_game_state {
                 Choosing => {
                     // TODO actual choosing
-                    // TODO set players and money
-                    //*sub_game_state = Holdem(<_>::default());
-                    *sub_game_state = AceyDeucey(<_>::default());
+                    let sub_game = SubGame::AceyDeucey;
+
+                    match sub_game {
+                        SubGame::Holdem => {
+                            todo!("holdem::Table::pre_selected");
+                            //*sub_game_state = Holdem(
+                                //holdem::Table::selected(
+                                    //*player_count,
+                                    //*moneys,
+                                //)
+                            //);
+                        }
+                        SubGame::AceyDeucey => {
+                            let player_count: acey_deucey::PlayerCount =
+                                match acey_deucey::PlayerCount::try_from(*player_count) {
+                                    Ok(player_count) => player_count,
+                                    Err(error) => {
+                                        debug_assert!(
+                                            false,
+                                            "{error}"
+                                        );
+                                        return ModeCmd::BackToTitleScreen;
+                                    }
+                                };
+
+                            let mut acey_deucey_moneys = 
+                                [Money::ZERO; acey_deucey::MAX_PLAYERS as usize];
+                            for i in 0..player_count.usize() {
+                                acey_deucey_moneys[i] = moneys[i].take_all();
+                            }
+
+                            *sub_game_state = AceyDeucey(
+                                acey_deucey::Table::selected(
+                                    rng,
+                                    player_count,
+                                    acey_deucey_moneys,
+                                )
+                            );
+                        }
+                    }
                 }
                 Holdem(ref mut table) => {
                     cmd = holdem::update_and_render(
@@ -454,8 +493,10 @@ use TableState::*;
                     );
 
                     if cmd == ModeCmd::FinishedRound {
-                        // TODO either copy money back, or refactor to make money a
-                        // shared mutable thing across games
+                        for i in 0..usize::from(*player_count) {
+                            moneys[i] = table.seats.moneys[i].take_all();
+                        }
+
                         *sub_game_state = Choosing;
                     }
                 }
@@ -472,8 +513,10 @@ use TableState::*;
                     );
 
                     if cmd == ModeCmd::FinishedRound {
-                        // TODO either copy money back, or refactor to make money a
-                        // shared mutable thing across games
+                        for i in 0..usize::from(*player_count) {
+                            moneys[i] = table.seats.moneys[i].take_all();
+                        }
+
                         *sub_game_state = Choosing;
                     }
                 }

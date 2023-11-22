@@ -179,21 +179,43 @@ impl PlayerCount {
     }
 }
 
+impl TryFrom<u8> for PlayerCount {
+    type Error = &'static str;
+
+    fn try_from(byte: u8) -> Result<Self, Self::Error> {
+        use PlayerCount::*;
+        match byte {
+            0 | 1 => Err("player count was too small"),
+            2 => Ok(Two),
+            3 => Ok(Three),
+            4 => Ok(Four),
+            5 => Ok(Five),
+            6 => Ok(Six),
+            7 => Ok(Seven),
+            8 => Ok(Eight),
+            9 => Ok(Nine),
+            10 => Ok(Ten),
+            11 => Ok(Eleven),
+            12 => Ok(Twelve),
+            13 => Ok(Thirteen),
+            14 => Ok(Fourteen),
+            15 => Ok(Fifteen),
+            16 => Ok(Sixteen),
+            17 => Ok(Seventeen),
+            _ => Err("player count was too big"),
+        }
+    }
+}
+
 pub fn gen_hand_index(rng: &mut Xs, player_count: PlayerCount) -> HandIndex {
     xs::range(rng, 0..player_count.u8() as _) as HandIndex
 }
 
 #[derive(Clone, Default)]
 pub struct Seats {
-    // FIXME There are some hard to pin down scenarios that cause the sum of total 
-    // money among the pot and all players to change over time, after the start of
-    // the game! The total should remain constant because money should not be 
-    // created or lost as part of the game. So, attempt to ensure that at the type
-    // level or via asserts. One way to attempt to do this at the type level is to
-    // make Money and NonZeroMoney into non-copy types, with a wrapper struct.
-    moneys: [Money; MAX_PLAYERS as usize],
-    personalities: [Personality; MAX_PLAYERS as usize],
-    skip: SkipState,
+    pub moneys: [Money; MAX_PLAYERS as usize],
+    pub personalities: [Personality; MAX_PLAYERS as usize],
+    pub skip: SkipState,
 }
 
 type Pot = Money;
@@ -350,6 +372,56 @@ impl Default for TableState {
 pub struct Table {
     pub seats: Seats,
     pub state: TableState,
+}
+
+impl Table {
+    pub fn selected(
+        rng: &mut Xs,
+        player_count: PlayerCount,
+        mut moneys: [Money; MAX_PLAYERS as usize],
+    ) -> Self {
+        let mut pot: Pot = Money::ZERO;
+
+        for i in 0..player_count.usize() {
+            MoneyMove {
+                from: &mut moneys[i],
+                to: &mut pot,
+                amount: INITIAL_ANTE_AMOUNT,
+            }.perform();
+        }
+
+        let mut personalities: [Personality; MAX_PLAYERS as usize] = <_>::default();//;
+
+        personalities[0] = None;
+        // TODO Make each element of this array user selectable too.
+        // Start at 1 to make the first player user controlled
+        for i in 1..player_count.usize() {
+            personalities[i] = Some(CpuPersonality{});
+        }
+
+        let (posts, deck) = deal(rng);
+
+        let current = gen_hand_index(rng, player_count);
+
+        Self {
+            seats: Seats {
+                moneys,
+                personalities,
+                skip: <_>::default(),
+            },
+            state: TableState::DealtPosts {
+                bundle: StateBundle {
+                    deck,
+                    posts,
+                    current,
+                    pot,
+                    player_count,
+                    selection: <_>::default(),
+                    round: <_>::default(),
+                },
+            },
+        }
+    }
 }
 
 pub struct State<'state> {
@@ -662,51 +734,21 @@ pub fn update_and_render(
                     text: b"submit",
                 }
             ) {
+                speaker.request_sfx(SFX::CardPlace);
+
                 let player_count = *player_count;
 
-                {
-                    let mut moneys = [0; MAX_PLAYERS as usize];
-                    for i in 0..player_count.usize() {
-                        moneys[i] = *starting_money;
-                    }
-    
-                    state.table.seats.moneys =
-                        Money::array_from_inner_array(moneys);
-                }
-
-                let mut pot: Pot = Money::ZERO;
-
+                let mut moneys = [0; MAX_PLAYERS as usize];
                 for i in 0..player_count.usize() {
-                    MoneyMove {
-                        from: &mut state.table.seats.moneys[i],
-                        to: &mut pot,
-                        amount: INITIAL_ANTE_AMOUNT,
-                    }.perform();
+                    moneys[i] = *starting_money;
                 }
+                let moneys = Money::array_from_inner_array(moneys);
 
-                state.table.seats.personalities[0] = None;
-                // TODO Make each element of this array user selectable too.
-                // Start at 1 to make the first player user controlled
-                for i in 1..player_count.usize() {
-                    state.table.seats.personalities[i] = Some(CpuPersonality{});
-                }
-
-                let (posts, deck) = deal(rng);
-
-                let current = gen_hand_index(rng, player_count);
-
-                speaker.request_sfx(SFX::CardPlace);
-                state.table.state = DealtPosts {
-                    bundle: StateBundle {
-                        deck,
-                        posts,
-                        current,
-                        pot,
-                        player_count,
-                        selection: <_>::default(),
-                        round: <_>::default(),
-                    }
-                };
+                *state.table = Table::selected(
+                    rng,
+                    player_count,
+                    moneys,
+                );
             } else {
                 let menu = [BackToTitleScreen, PlayerCountSelect, StartingMoneySelect, Submit];
 
@@ -1437,6 +1479,7 @@ pub fn update_and_render(
                     }
                 }
 
+                // TODO handle case where the pot has all the money in it!
                 if bundle.pot == 0 {
                     // TODO show a winner screen with more winner info.
                     if state.table.seats.personalities[0].is_none() {

@@ -14,9 +14,9 @@ use crate::ui::{self, ButtonSpec, Id::*, do_button};
 
 #[derive(Clone, Default)]
 pub struct Seats {
-    moneys: [Money; MAX_PLAYERS as usize],
-    personalities: [Personality; MAX_PLAYERS as usize],
-    skip: SkipState,
+    pub moneys: [Money; MAX_PLAYERS as usize],
+    pub personalities: [Personality; MAX_PLAYERS as usize],
+    pub skip: SkipState,
 }
 
 #[derive(Clone, Default)]
