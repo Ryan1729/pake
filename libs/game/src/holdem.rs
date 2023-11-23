@@ -1702,23 +1702,12 @@ pub fn update_and_render(
                     let award_amounts: PerPlayer<MoneyInner> = {
                         let mut award_amounts = PerPlayer::<MoneyInner>::default();
 
-                        let mut remaining = amount;
-
-                        debug_assert!(remaining % MIN_MONEY_UNIT == 0);
-
-                        // TODO? More efficient version of this?
-                        // Will this actually ever be a bottleneck?
-                        let mut i = 0;
-                        while remaining > 0 {
-                            remaining = remaining.saturating_sub(MIN_MONEY_UNIT.get());
-                            award_amounts[i] = award_amounts[i].saturating_add(MIN_MONEY_UNIT.get());
-
-                            i += 1;
-                            if i >= usize::from(winner_count) {
-                                i = 0;
-                            }
-                        }
-
+                        models::split_among(
+                            amount,
+                            &mut award_amounts[0..winner_count],
+                            usize::from(bundle.current)
+                        );
+                        
                         award_amounts
                     };
                     for i in 0..winner_count {

@@ -403,6 +403,7 @@ impl Table {
 
         let current = gen_hand_index(rng, player_count);
 
+        // TODO handle case where the pot has all the money in it!
         Self {
             seats: Seats {
                 moneys,
@@ -588,6 +589,22 @@ pub fn update_and_render(
                 selection: MenuSelection::default(),
                 round: Round::AfterOne,
             };
+
+            let pot_has_all_the_money: bool = todo!();
+
+            if pot_has_all_the_money {
+                // This is traditionally played against "the house", so there all the
+                // money collecting there is a feature, not a bug.
+                // Maybe we'll make that matter later, but for now it's just a 
+                // disappointing outcome, so split up the money in case this is 
+                // dealer's choice, and go back.
+                $bundle.pot.split_among(
+                    &mut state.table.seats.moneys[..],
+                    usize::from(previous_index)
+                );
+
+                cmd = ModeCmd::BackToTitleScreen;
+            }
         }
     }
 
@@ -1479,7 +1496,6 @@ pub fn update_and_render(
                     }
                 }
 
-                // TODO handle case where the pot has all the money in it!
                 if bundle.pot == 0 {
                     // TODO show a winner screen with more winner info.
                     if state.table.seats.personalities[0].is_none() {

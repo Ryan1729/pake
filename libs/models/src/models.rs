@@ -194,6 +194,47 @@ impl Iterator for CardBitsetIter {
     }
 }
 
+pub fn split_among(
+    amount: MoneyInner,
+    targets: &mut [MoneyInner],
+    remainder_goes_to: usize
+) {
+    if targets.is_empty() {
+        debug_assert!(false, "split_among called with empty slice!");
+        return;
+    }
+    todo!("{amount} {remainder_goes_to}");
+}
+
+#[test]
+fn split_among_works_on_these_examples() {
+    macro_rules! a {
+        ($start_with: literal $targets: expr, $remainder_goes_to: literal => $expected: literal) => ({
+            let mut targets = $targets;
+
+            split_among($start_with, &mut targets[..], $remainder_goes_to);
+
+            assert_eq!(targets, $expected);
+        })
+    }
+    a!(10 [0], 0 => [10]);
+    a!(10 [0, 0, 0], 0 => [4, 3, 3]);
+    a!(10 [0, 0, 0], 1 => [3, 4, 3]);
+    a!(10 [0, 0, 0], 2 => [3, 3, 4]);
+    a!(10 [0, 0, 0], 3 => [4, 3, 3]);
+    a!(10 [0, 0, 0], 99 => [4, 3, 3]);
+
+    a!(10 [5], 0 => [15]);
+    // [1 + 4, 2 + 3, 3 + 3]
+    a!(10 [1, 2, 3], 0 => [5, 5, 6]);
+    // [1 + 3, 2 + 4, 3 + 3]
+    a!(10 [1, 2, 3], 1 => [4, 6, 6]);
+    // [1 + 3, 2 + 3, 3 + 4]
+    a!(10 [1, 2, 3], 2 => [4, 5, 7]);
+    a!(10 [1, 2, 3], 3 => [5, 5, 6]);
+    a!(10 [1, 2, 3], 99 => [5, 5, 6]);
+}
+
 mod money {
     use super::*;
 
@@ -280,6 +321,30 @@ mod money {
             self.0 = core::cmp::min(self.0, to_leave);
 
             output
+        }
+
+        pub fn split_among(&mut self, targets: &mut [Money], remainder_goes_to: usize) {
+            // TODO? refactor to avoid needing dynamic allocation?
+            let mut amounts = vec![0; targets.len()];
+
+            crate::split_among(
+                self.as_inner(),
+                &mut amounts[..],
+                remainder_goes_to
+            );
+
+            for i in 0..targets.len() {
+                let possibly_zero_amount = amounts[i];
+                let Some(amount) = NonZeroMoneyInner::new(possibly_zero_amount)
+                    else { continue };
+                MoneyMove {
+                    from: self,
+                    to: &mut targets[i],
+                    amount,
+                }.perform();
+            }
+
+            assert_eq!(*self, 0);
         }
     }
 
