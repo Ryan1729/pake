@@ -195,7 +195,7 @@ impl Iterator for CardBitsetIter {
 }
 
 pub fn split_among(
-    amount: MoneyInner,
+    mut remaining: MoneyInner,
     targets: &mut [MoneyInner],
     remainder_goes_to: usize
 ) {
@@ -203,18 +203,48 @@ pub fn split_among(
         debug_assert!(false, "split_among called with empty slice!");
         return;
     }
-    todo!("{amount} {remainder_goes_to}");
+
+    debug_assert!(remaining % MIN_MONEY_UNIT.get() == 0);
+
+    let len = targets.len();
+
+    // TODO? More efficient version of this?
+    // Will this actually ever be a bottleneck?
+    let mut i = remainder_goes_to;
+    if i >= len {
+        i = 0;
+    }
+    while remaining > 0 {
+        remaining = remaining.saturating_sub(MIN_MONEY_UNIT.get());
+        targets[i] = targets[i].saturating_add(MIN_MONEY_UNIT.get());
+
+        i += 1;
+        if i >= len {
+            i = 0;
+        }
+    }
 }
 
 #[test]
 fn split_among_works_on_these_examples() {
     macro_rules! a {
-        ($start_with: literal $targets: expr, $remainder_goes_to: literal => $expected: literal) => ({
+        ($start_with: literal $targets: expr, $remainder_goes_to: literal => $expected: expr) => ({
             let mut targets = $targets;
 
-            split_among($start_with, &mut targets[..], $remainder_goes_to);
+            for el in &mut targets {
+                *el *= MIN_MONEY_UNIT.get();
+            }
 
-            assert_eq!(targets, $expected);
+            let mut expected = $expected;
+            for el in &mut expected {
+                *el *= MIN_MONEY_UNIT.get();
+            }
+
+            let start_with = $start_with * MIN_MONEY_UNIT.get();
+
+            split_among(start_with, &mut targets[..], $remainder_goes_to);
+
+            assert_eq!(targets, expected);
         })
     }
     a!(10 [0], 0 => [10]);
@@ -234,6 +264,13 @@ fn split_among_works_on_these_examples() {
     a!(10 [1, 2, 3], 3 => [5, 5, 6]);
     a!(10 [1, 2, 3], 99 => [5, 5, 6]);
 }
+
+// TODO? Switch to a representation that has MIN_MONEY_UNIT as 1, but scales up for
+//       display only?
+pub const MIN_MONEY_UNIT: NonZeroMoneyInner = 
+    NonZeroMoneyInner::MIN.saturating_add(5 - 1);
+pub const INITIAL_ANTE_AMOUNT: NonZeroMoneyInner = 
+    MIN_MONEY_UNIT.saturating_mul(MIN_MONEY_UNIT);
 
 mod money {
     use super::*;

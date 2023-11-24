@@ -1,5 +1,5 @@
 use gfx::{card, pre_nul_len, Commands, SPACING_W, SPACING_H};
-use models::{Card, CardBitset, ALL_CARDS, Deck, Money, MoneyInner, MoneyMove, NonZeroMoney, NonZeroMoneyInner, Rank, gen_deck, get_rank, ranks};
+use models::{Card, CardBitset, ALL_CARDS, INITIAL_ANTE_AMOUNT, MIN_MONEY_UNIT, Deck, Money, MoneyInner, MoneyMove, NonZeroMoney, NonZeroMoneyInner, Rank, gen_deck, get_rank, ranks};
 use platform_types::{Button, Dir, Input, PaletteIndex, Speaker, SFX, command, unscaled, TEXT};
 use probability::{EvalCount};
 
@@ -7,7 +7,7 @@ use std::io::Write;
 
 use xs::Xs;
 
-use crate::shared_game_types::{CpuPersonality, Personality, ModeCmd, SkipState, INITIAL_ANTE_AMOUNT, MIN_MONEY_UNIT};
+use crate::shared_game_types::{CpuPersonality, Personality, ModeCmd, SkipState};
 use crate::ui::{self, draw_money_in_rect, stack_money_text, ButtonSpec, Id::*, do_button};
 
 type Posts = [Card; 2];

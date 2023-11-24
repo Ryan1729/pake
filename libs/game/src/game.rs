@@ -33,13 +33,6 @@ mod shared_game_types {
         // Relevant for dealer's choice mode
         FinishedRound,
     }
-
-    // TODO? Switch to a representation that has MIN_MONEY_UNIT as 1, but scales up for
-    //       display only?
-    pub const MIN_MONEY_UNIT: NonZeroMoneyInner = 
-        NonZeroMoneyInner::MIN.saturating_add(5 - 1);
-    pub const INITIAL_ANTE_AMOUNT: NonZeroMoneyInner = 
-        MIN_MONEY_UNIT.saturating_mul(MIN_MONEY_UNIT);
 }
 use shared_game_types::{ModeCmd};
 

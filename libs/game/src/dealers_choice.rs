@@ -1,5 +1,5 @@
 use gfx::{card, checkbox, pre_nul_len, Commands, SPACING_W, SPACING_H};
-use models::{Money, MoneyInner, MoneyMove, NonZeroMoney, NonZeroMoneyInner};
+use models::{Money, MoneyInner, MoneyMove, NonZeroMoney, NonZeroMoneyInner, MIN_MONEY_UNIT};
 use platform_types::{Button, Dir, Input, PaletteIndex, Speaker, SFX, command, unscaled, TEXT};
 
 use std::io::Write;
@@ -7,7 +7,7 @@ use std::io::Write;
 use xs::Xs;
 
 use crate::{acey_deucey, holdem, PlayerCount, SubGame, OVERALL_MAX_PLAYER_COUNT};
-use crate::shared_game_types::{CpuPersonality, Personality, ModeCmd, SkipState, MIN_MONEY_UNIT};
+use crate::shared_game_types::{CpuPersonality, Personality, ModeCmd, SkipState};
 use crate::ui::{self, draw_money_in_rect, stack_money_text, ButtonSpec, Id::*, do_button, do_checkbox};
 
 type Moneys = [Money; OVERALL_MAX_PLAYER_COUNT as usize];
