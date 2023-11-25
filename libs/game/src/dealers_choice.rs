@@ -439,17 +439,34 @@ use TableState::*;
             match sub_game_state {
                 Choosing => {
                     // TODO actual choosing
-                    let sub_game = SubGame::AceyDeucey;
+                    let sub_game = SubGame::Holdem;
 
                     match sub_game {
                         SubGame::Holdem => {
-                            todo!("holdem::Table::pre_selected");
-                            //*sub_game_state = Holdem(
-                                //holdem::Table::selected(
-                                    //*player_count,
-                                    //*moneys,
-                                //)
-                            //);
+                            let player_count: holdem::PlayerCount =
+                                match holdem::PlayerCount::try_from(*player_count) {
+                                    Ok(player_count) => player_count,
+                                    Err(()) => {
+                                        debug_assert!(
+                                            false
+                                        );
+                                        return ModeCmd::BackToTitleScreen;
+                                    }
+                                };
+
+                            let mut holdem_moneys = 
+                                [Money::ZERO; holdem::MAX_PLAYERS as usize];
+                            for i in 0..player_count.usize() {
+                                holdem_moneys[i] = moneys[i].take_all();
+                            }
+
+                            *sub_game_state = Holdem(
+                                holdem::Table::selected(
+                                    rng,
+                                    player_count,
+                                    holdem_moneys,
+                                )
+                            );
                         }
                         SubGame::AceyDeucey => {
                             let player_count: acey_deucey::PlayerCount =

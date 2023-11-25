@@ -390,7 +390,7 @@ impl Table {
             }.perform();
         }
 
-        let mut personalities: [Personality; MAX_PLAYERS as usize] = <_>::default();//;
+        let mut personalities: [Personality; MAX_PLAYERS as usize] = <_>::default();
 
         personalities[0] = None;
         // TODO Make each element of this array user selectable too.

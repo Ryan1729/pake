@@ -2,6 +2,8 @@ use gfx::{CHAR_SPACING_H, CHAR_SPACING_W, SPACING_H, SPACING_W, chart_block, Com
 use look_up::{holdem::{ALL_SORTED_HANDS, hand_win_probability}};
 pub use models::{MIN_MONEY_UNIT, holdem::{PlayerIndex, MIN_PLAYERS, MAX_PLAYERS}};
 use models::{Deck, Money, MoneyInner, MoneyMove, NonZeroMoney, NonZeroMoneyInner, holdem::{MAX_POTS, Action, ActionKind, ActionSpec, AllowedKindMode, CommunityCards, Facing, FullBoard, Hand, HandIndex, HandLen, Hands, PerPlayer, Pot, PotAction, RoundOutcome, gen_action, gen_hand_index}};
+// TODO? Move Handlen into here, and rename it?
+pub use models::holdem::HandLen as PlayerCount;
 use platform_types::{Button, Dir, Input, PaletteIndex, Speaker, SFX, command, unscaled, TEXT};
 use probability::{FIFTY_PERCENT, SEVENTY_FIVE_PERCENT, EIGHTY_SEVEN_POINT_FIVE_PERCENT, Probability};
 
@@ -12,11 +14,27 @@ use std::io::Write;
 use crate::shared_game_types::{CpuPersonality, Personality, ModeCmd, SkipState};
 use crate::ui::{self, ButtonSpec, Id::*, do_button};
 
-#[derive(Clone, Default)]
+#[derive(Clone)]
 pub struct Seats {
     pub moneys: [Money; MAX_PLAYERS as usize],
     pub personalities: [Personality; MAX_PLAYERS as usize],
     pub skip: SkipState,
+    // TODO Increase these as the game goes on {
+    pub small_blind_amount: NonZeroMoneyInner,
+    pub large_blind_amount: NonZeroMoneyInner,
+    // }
+}
+
+impl Default for Seats {
+    fn default() -> Self {
+        Self {
+            moneys: <_>::default(),
+            personalities: <_>::default(),
+            skip: <_>::default(),
+            small_blind_amount: MIN_MONEY_UNIT,
+            large_blind_amount: MIN_MONEY_UNIT.saturating_add(MIN_MONEY_UNIT.get()),
+        }
+    }
 }
 
 #[derive(Clone, Default)]
@@ -68,10 +86,155 @@ impl Default for TableState {
     }
 }
 
+macro_rules! collect_blinds {
+    ($hands: ident $(,)? $player_count: ident $(,)? $dealer: ident $(,)? $pot: ident $(,)? $seats: ident) => {
+        let hands = &$hands;
+        let player_count = $player_count;
+        let dealer = $dealer;
+        let pot = &mut $pot;
+
+        {
+            let mut index = dealer;
+            if player_count == HandLen::Two {
+                // When head-to-head, the dealer posts the small blind
+                // and the other player posts the big blind, so don't
+                // advance.
+            } else {
+                index += 1;
+                if index >= hands.len().u8() {
+                    index = 0;
+                }
+            };
+
+            pot.push_bet(
+                index, 
+                PotAction::Bet(
+                    $seats.moneys[usize::from(index)]
+                        .take($seats.small_blind_amount.get())
+                )
+            );
+
+            index += 1;
+            if index >= hands.len().u8() {
+                index = 0;
+            }
+
+            pot.push_bet(
+                index, 
+                PotAction::Bet(
+                    $seats.moneys[usize::from(index)]
+                        .take($seats.large_blind_amount.get())
+                )
+            );
+        }
+    }
+}
+
+macro_rules! next_bundle {
+    ($bundle: ident =
+        $hands: expr,
+        $deck: expr,
+        $dealer: expr,
+        $pot: expr
+    ) => {
+        let hands = $hands;
+        let deck = $deck;
+        let dealer = $dealer;
+        let player_count = hands.len();
+        let mut pot = $pot;
+
+        pot.reset_for_new_round();
+
+        let current = if player_count == HandLen::Two {
+            // When head-to-head, the dealer acts first.
+            dealer
+        } else {
+            // Normally, the player after the dealer acts first.
+            let mut index = dealer + 1;
+            if index >= hands.len().u8() {
+                index = 0;
+            }
+            index
+        };
+
+        let $bundle = StateBundle {
+            hands,
+            deck,
+            dealer,
+            current,
+            pot,
+            selection: MenuSelection::default(),
+            modal: Modal::default(),
+        };
+    }
+}
+
 #[derive(Clone, Default)]
 pub struct Table {
     pub seats: Seats,
     pub state: TableState,
+}
+
+impl Table {
+    pub fn selected(
+        rng: &mut Xs,
+        player_count: PlayerCount,
+        mut moneys: [Money; MAX_PLAYERS as usize],
+    ) -> Self {
+        let mut personalities: [Personality; MAX_PLAYERS as usize] = <_>::default();
+
+        personalities[0] = None;
+        // TODO Make each element of this array user selectable too.
+        // Start at 1 to make the first player user controlled
+        for i in 1..player_count.usize() {
+            personalities[i] = Some(CpuPersonality{});
+        }
+
+        let (hands, deck) = models::holdem::deal(rng, player_count);
+
+        let selected = gen_hand_index(rng, player_count);
+
+        let dealer = if moneys[usize::from(selected)] == 0 {
+            let mut index = selected + 1;
+            while {
+                if index >= player_count.u8() {
+                    index = 0;
+                }
+
+                index != selected
+                && moneys[usize::from(index)] == 0
+            } {
+                index += 1;
+            }
+
+            index
+        } else {
+            selected
+        };
+
+        let mut pot = Pot::with_capacity(player_count, 16);
+
+        let mut seats = Seats {
+            moneys,
+            personalities,
+            ..<_>::default()
+        };
+
+        {
+            let seats_ref = &mut seats;
+
+            collect_blinds!(hands player_count dealer pot, seats_ref);
+        }
+
+        next_bundle!(bundle = hands, deck, dealer, pot);
+
+        Self {
+            seats,
+            state: TableState::PreFlop {
+                bundle,
+            },
+        }
+    }
 }
 
 pub struct State<'state> {
@@ -157,10 +320,6 @@ pub fn update_and_render(
             }
         }
     }
-
-    // TODO Increase these as the game goes on
-    let small_blind_amount: NonZeroMoneyInner = MIN_MONEY_UNIT;
-    let large_blind_amount: NonZeroMoneyInner = small_blind_amount.saturating_add(small_blind_amount.get());
 
     macro_rules! do_holdem_hands {
         ($group: ident $(,)? $bundle: ident , $community_opt: expr) => ({
@@ -510,7 +669,7 @@ pub fn update_and_render(
                             let probability = hand_win_probability(hand);
                             if probability >= SEVENTY_FIVE_PERCENT {
                                 let multiple = MoneyInner::from(xs::range(rng, 3..6));
-                                Action::Raise(minimum_raise_total + large_blind_amount.get().saturating_mul(multiple))
+                                Action::Raise(minimum_raise_total + state.table.seats.large_blind_amount.get().saturating_mul(multiple))
                             } else if probability >= FIFTY_PERCENT {
                                 if xs::range(rng, 0..5) == 0 {
                                     // Don't be perfectly predictable!
@@ -1094,45 +1253,6 @@ pub fn update_and_render(
         })
     }
 
-    macro_rules! next_bundle {
-        ($bundle: ident =
-            $hands: expr,
-            $deck: expr,
-            $dealer: expr,
-            $pot: expr
-        ) => {
-            let hands = $hands;
-            let deck = $deck;
-            let dealer = $dealer;
-            let player_count = hands.len();
-            let mut pot = $pot;
-
-            pot.reset_for_new_round();
-
-            let current = if player_count == HandLen::Two {
-                // When head-to-head, the dealer acts first.
-                dealer
-            } else {
-                // Normally, the player after the dealer acts first.
-                let mut index = dealer + 1;
-                if index >= hands.len().u8() {
-                    index = 0;
-                }
-                index
-            };
-
-            let $bundle = StateBundle {
-                hands,
-                deck,
-                dealer,
-                current,
-                pot,
-                selection: MenuSelection::default(),
-                modal: Modal::default(),
-            };
-        }
-    }
-
     macro_rules! finish_round {
         () => {
             #[cfg(debug_assertions)]
@@ -1239,7 +1359,9 @@ pub fn update_and_render(
 
                         let mut pot = Pot::with_capacity(player_count, 16);
 
-                        collect_blinds!(hands player_count dealer pot);
+                        let seats_ref = &mut state.table.seats;
+
+                        collect_blinds!(hands player_count dealer pot, seats_ref);
 
                         next_bundle!(bundle = hands, deck, dealer, pot);
 
@@ -1278,50 +1400,6 @@ pub fn update_and_render(
             $pot.award(&mut state.table.seats.moneys[i]);
 
             finish_round!();
-        }
-    }
-
-    macro_rules! collect_blinds {
-        ($hands: ident $(,)? $player_count: ident $(,)? $dealer: ident $(,)? $pot: ident) => {
-            let hands = &$hands;
-            let player_count = $player_count;
-            let dealer = $dealer;
-            let pot = &mut $pot;
-
-            {
-                let mut index = dealer;
-                if player_count == HandLen::Two {
-                    // When head-to-head, the dealer posts the small blind
-                    // and the other player posts the big blind, so don't
-                    // advance.
-                } else {
-                    index += 1;
-                    if index >= hands.len().u8() {
-                        index = 0;
-                    }
-                };
-
-                pot.push_bet(
-                    index, 
-                    PotAction::Bet(
-                        state.table.seats.moneys[usize::from(index)]
-                            .take(small_blind_amount.get())
-                    )
-                );
-
-                index += 1;
-                if index >= hands.len().u8() {
-                    index = 0;
-                }
-
-                pot.push_bet(
-                    index, 
-                    PotAction::Bet(
-                        state.table.seats.moneys[usize::from(index)]
-                            .take(large_blind_amount.get())
-                    )
-                );
-            }
         }
     }
 
@@ -1419,38 +1497,21 @@ pub fn update_and_render(
                     text: b"submit",
                 }
             ) {
-                {
-                    let mut moneys = [0; MAX_PLAYERS as usize];
-                    for i in 0..player_count.usize() {
-                        moneys[i] = *starting_money;
-                    }
-    
-                    state.table.seats.moneys =
-                        Money::array_from_inner_array(moneys);
-                }
-
-                state.table.seats.personalities[0] = None;
-                // TODO Make each element of this array user selectable too.
-                // Start at 1 to make the first player user controlled
-                for i in 1..player_count.usize() {
-                    state.table.seats.personalities[i] = Some(CpuPersonality{});
-                }
-
-                let (hands, deck) = models::holdem::deal(rng, *player_count);
-
-                let dealer = gen_hand_index(rng, *player_count);
-
-                let mut pot = Pot::with_capacity(*player_count, 16);
+                speaker.request_sfx(SFX::CardPlace);
 
                 let player_count = *player_count;
-                collect_blinds!(hands player_count dealer pot);
 
-                next_bundle!(bundle = hands, deck, dealer, pot);
+                let mut moneys = [0; MAX_PLAYERS as usize];
+                for i in 0..player_count.usize() {
+                    moneys[i] = *starting_money;
+                }
+                let moneys = Money::array_from_inner_array(moneys);
 
-                speaker.request_sfx(SFX::CardPlace);
-                state.table.state = PreFlop {
-                    bundle,
-                };
+                *state.table = Table::selected(
+                    rng,
+                    player_count,
+                    moneys,
+                );
             } else {
                 let menu = [BackToTitleScreen, PlayerCountSelect, StartingMoneySelect, Submit];
 
