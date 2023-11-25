@@ -401,7 +401,25 @@ impl Table {
 
         let (posts, deck) = deal(rng);
 
-        let current = gen_hand_index(rng, player_count);
+        let selected = gen_hand_index(rng, player_count);
+
+        let current = if moneys[usize::from(selected)] == 0 {
+            let mut index = selected + 1;
+            while {
+                if index >= player_count.u8() {
+                    index = 0;
+                }
+
+                index != selected
+                && moneys[usize::from(index)] == 0
+            } {
+                index += 1;
+            }
+
+            index
+        } else {
+            selected
+        };
 
         // TODO handle case where the pot has all the money in it!
         Self {
@@ -580,7 +598,7 @@ pub fn update_and_render(
                 deal(rng)
             };
 
-            let $bundle = StateBundle {
+            let mut $bundle = StateBundle {
                 deck,
                 posts,
                 current,
@@ -590,7 +608,9 @@ pub fn update_and_render(
                 round: Round::AfterOne,
             };
 
-            let pot_has_all_the_money: bool = todo!();
+            let pot_has_all_the_money: bool = 
+                state.table.seats.moneys.iter()
+                    .all(|m| m.as_inner() == 0);
 
             if pot_has_all_the_money {
                 // This is traditionally played against "the house", so there all the
@@ -1498,7 +1518,7 @@ pub fn update_and_render(
 
                 if bundle.pot == 0 {
                     // TODO show a winner screen with more winner info.
-                    if state.table.seats.personalities[0].is_none() {
+                    if state.table.seats.personalities[current_i].is_none() {
                         println!("User wins!");
                     } else {
                         println!("Cpu player wins!");
