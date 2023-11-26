@@ -6,18 +6,20 @@ use std::io::Write;
 
 use xs::Xs;
 
-use crate::{acey_deucey, holdem, PlayerCount, SubGame, OVERALL_MAX_PLAYER_COUNT};
+use crate::{acey_deucey, five_card_draw, holdem, PlayerCount, SubGame, OVERALL_MAX_PLAYER_COUNT};
 use crate::shared_game_types::{CpuPersonality, Personality, ModeCmd, SkipState};
 use crate::ui::{self, draw_money_in_rect, stack_money_text, ButtonSpec, Id::*, do_button, do_checkbox};
 
 type Moneys = [Money; OVERALL_MAX_PLAYER_COUNT as usize];
 
+// TODO move into mode_def macro
 #[derive(Clone, Default)]
 enum SubGameState {
     #[default]
     Choosing,
     Holdem(holdem::Table),
     AceyDeucey(acey_deucey::Table),
+    FiveCardDraw(five_card_draw::Table),
 }
 
 #[derive(Clone)]
@@ -55,6 +57,7 @@ pub struct State<'state> {
 }
 
 type SubGameBits = u8;
+// TODO move into mode_def macro
 #[derive(Clone, Copy, Debug, Default)]
 pub struct SubGameBitset(SubGameBits);
 
@@ -76,6 +79,7 @@ impl SubGameBitset {
         match game {
             Holdem => 1 << 0,
             AceyDeucey => 1 << 1,
+            FiveCardDraw => 1 << 2,
         }
     }
 
@@ -159,7 +163,7 @@ pub fn update_and_render(
     input: Input,
     speaker: &mut Speaker,
 ) -> ModeCmd {
-use TableState::*;
+    use TableState::*;
     use ui::Id::*;
 
     let rng = state.rng;
@@ -495,6 +499,33 @@ use TableState::*;
                                 )
                             );
                         }
+                        SubGame::FiveCardDraw => {
+                            let player_count: five_card_draw::PlayerCount =
+                                match five_card_draw::PlayerCount::try_from(*player_count) {
+                                    Ok(player_count) => player_count,
+                                    Err(error) => {
+                                        debug_assert!(
+                                            false,
+                                            "{error}"
+                                        );
+                                        return ModeCmd::BackToTitleScreen;
+                                    }
+                                };
+
+                            let mut five_card_draw_moneys = 
+                                [Money::ZERO; five_card_draw::MAX_PLAYERS as usize];
+                            for i in 0..player_count.usize() {
+                                five_card_draw_moneys[i] = moneys[i].take_all();
+                            }
+
+                            *sub_game_state = FiveCardDraw(
+                                five_card_draw::Table::selected(
+                                    rng,
+                                    player_count,
+                                    five_card_draw_moneys,
+                                )
+                            );
+                        }
                     }
                 }
                 Holdem(ref mut table) => {
@@ -521,6 +552,26 @@ use TableState::*;
                     cmd = acey_deucey::update_and_render(
                         commands,
                         acey_deucey::State {
+                            rng,
+                            ctx: state.ctx,
+                            table
+                        },
+                        input,
+                        speaker,
+                    );
+
+                    if cmd == ModeCmd::FinishedRound {
+                        for i in 0..usize::from(*player_count) {
+                            moneys[i] = table.seats.moneys[i].take_all();
+                        }
+
+                        *sub_game_state = Choosing;
+                    }
+                }
+                FiveCardDraw(ref mut table) => {
+                    cmd = five_card_draw::update_and_render(
+                        commands,
+                        five_card_draw::State {
                             rng,
                             ctx: state.ctx,
                             table

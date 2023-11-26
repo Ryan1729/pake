@@ -42,6 +42,8 @@ mod holdem;
 
 mod acey_deucey;
 
+mod five_card_draw;
+
 macro_rules! all_up_down_impl {
     ($item_name: ident) => {
         impl $item_name {
@@ -83,13 +85,13 @@ macro_rules! mode_def {
         {$mode_name: ident $mode: ident $sub_game: ident}
         $dealers_choice: ident => (
             $dealers_choice_name: literal,
-            $dealers_choice_table: ty
+            $dealers_choice_path: ident
         ),
         [
             $($sub_games: ident => 
                 (
                     $sub_games_text: literal,
-                    $sub_games_table: ty
+                    $sub_games_path: ident
                 )
             ),+
             $(,)?
@@ -138,8 +140,8 @@ macro_rules! mode_def {
         #[derive(Clone)]
         pub enum $mode {
             Title(ModeName),
-            $dealers_choice($dealers_choice_table),
-            $($sub_games($sub_games_table)),+
+            $dealers_choice($dealers_choice_path::Table),
+            $($sub_games($sub_games_path::Table)),+
         }
 
         #[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
@@ -149,6 +151,27 @@ macro_rules! mode_def {
         }
 
         impl $sub_game {
+            pub const fn min_player_count(self) -> PlayerCount {
+                use $sub_game::*;
+                match self {
+                    $($sub_games => $sub_games_path::MIN_PLAYERS),+
+                }
+            }
+        
+            pub const fn max_player_count(self) -> PlayerCount {
+                use $sub_game::*;
+                match self {
+                    $($sub_games => $sub_games_path::MAX_PLAYERS),+
+                }
+            }
+        
+            pub fn text(self) -> &'static [u8] {
+                use $sub_game::*;
+                match self {
+                    $($sub_games => $mode_name::$sub_games),+
+                }.text().as_bytes()
+            }
+
             pub const COUNT: u8 = {
                 let mut count = 0;
 
@@ -173,43 +196,17 @@ macro_rules! mode_def {
 
 mode_def!{
     {ModeName Mode SubGame}
-    DealersChoice => ("dealer's choice", dealers_choice::Table),
+    DealersChoice => ("dealer's choice", dealers_choice),
     [
-        Holdem => ("dealer's choice", holdem::Table),
-        AceyDeucey => ("acey-deucey", acey_deucey::Table),
-//         FiveCardDraw => ("five-card draw", five_card_draw::Table)
+        Holdem => ("dealer's choice", holdem),
+        AceyDeucey => ("acey-deucey", acey_deucey),
+        FiveCardDraw => ("five-card draw", five_card_draw),
     ]
 }
 
 impl Default for Mode {
     fn default() -> Self {
         Self::Title(<_>::default())
-    }
-}
-
-impl SubGame {
-    pub const fn min_player_count(self) -> PlayerCount {
-        use SubGame::*;
-        match self {
-            Holdem => holdem::MIN_PLAYERS,
-            AceyDeucey => acey_deucey::MIN_PLAYERS,
-        }
-    }
-
-    pub const fn max_player_count(self) -> PlayerCount {
-        use SubGame::*;
-        match self {
-            Holdem => holdem::MAX_PLAYERS,
-            AceyDeucey => acey_deucey::MAX_PLAYERS,
-        }
-    }
-
-    pub fn text(self) -> &'static [u8] {
-        use SubGame::*;
-        match self {
-            Holdem => ModeName::Holdem,
-            AceyDeucey => ModeName::AceyDeucey,
-        }.text().as_bytes()
     }
 }
 
@@ -514,6 +511,7 @@ pub fn update_and_render(
             match title_cmd {
                 TitleCmd::NoOp => {},
                 TitleCmd::StartMode(name) => {
+                    // TODO move into mode_def macro
                     *mode = match name {
                         ModeName::DealersChoice => {
                             Mode::DealersChoice(<_>::default())
@@ -523,6 +521,9 @@ pub fn update_and_render(
                         },
                         ModeName::AceyDeucey => {
                             Mode::AceyDeucey(<_>::default())
+                        },
+                        ModeName::FiveCardDraw => {
+                            Mode::FiveCardDraw(<_>::default())
                         },
                     };
                 },
@@ -556,6 +557,18 @@ pub fn update_and_render(
             cmd = acey_deucey::update_and_render(
                 commands,
                 acey_deucey::State {
+                    rng: &mut state.rng,
+                    ctx: &mut state.ctx,
+                    table,
+                },
+                input,
+                speaker,
+            );
+        }
+        Mode::FiveCardDraw(table) => {
+            cmd = five_card_draw::update_and_render(
+                commands,
+                five_card_draw::State {
                     rng: &mut state.rng,
                     ctx: &mut state.ctx,
                     table,
