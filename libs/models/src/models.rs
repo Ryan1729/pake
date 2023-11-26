@@ -231,6 +231,7 @@ fn split_among_works_on_these_examples() {
         ($start_with: literal $targets: expr, $remainder_goes_to: literal => $expected: expr) => ({
             let mut targets = $targets;
 
+            // TODO premultiply with MIN_MONEY_UNIT in test specs
             for el in &mut targets {
                 *el *= MIN_MONEY_UNIT.get();
             }

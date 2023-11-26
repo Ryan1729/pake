@@ -42,54 +42,174 @@ mod holdem;
 
 mod acey_deucey;
 
-#[derive(Clone, Copy, Default)]
-pub enum ModeName {
-    #[default]
-    DealersChoice,
-    Holdem,
-    AceyDeucey
-}
-
-impl ModeName {
-    fn text(self) -> &'static str {
-        use ModeName::*;
-        match self {
-            DealersChoice => "dealer's choice",
-            Holdem => "hold'em",
-            AceyDeucey => "acey-deucey",
+macro_rules! all_up_down_impl {
+    ($item_name: ident) => {
+        impl $item_name {
+            fn wrapping_up(self) -> Self {
+                let mut index = self.index_of();
+                if index == 0 {
+                    index = Self::ALL.len() - 1;
+                } else {
+                    index = index.saturating_sub(1);
+                }
+        
+                Self::ALL[index]
+            }
+        
+            fn wrapping_down(self) -> Self {
+                let mut index = self.index_of();
+                index = index.saturating_add(1);
+                if index >= Self::ALL.len() {
+                    index = 0;
+                }
+        
+                Self::ALL[index]
+            }
+        
+            fn index_of(self) -> usize {
+                let mut i = 0;
+                for game in Self::ALL {
+                    if game == self { break }
+                    i += 1;
+                }
+                i
+            }
         }
     }
+}
 
-    fn up(&mut self) {
-        use ModeName::*;
-        *self = match self {
-            DealersChoice => AceyDeucey,
-            Holdem => DealersChoice,
-            AceyDeucey => Holdem,
-        };
-    }
+macro_rules! mode_def {
+    (
+        {$mode_name: ident $mode: ident $sub_game: ident}
+        $dealers_choice: ident => (
+            $dealers_choice_name: literal,
+            $dealers_choice_table: ty
+        ),
+        [
+            $($sub_games: ident => 
+                (
+                    $sub_games_text: literal,
+                    $sub_games_table: ty
+                )
+            ),+
+            $(,)?
+        ]
+    ) => {
+        #[derive(Clone, Copy, Default, PartialEq, Eq)]
+        pub enum $mode_name {
+            #[default]
+            $dealers_choice,
+            $($sub_games),+
+        }
 
-    fn down(&mut self) {
-        use ModeName::*;
-        *self = match self {
-            DealersChoice => Holdem,
-            Holdem => AceyDeucey,
-            AceyDeucey => DealersChoice,
-        };
+        impl $mode_name {
+            pub const COUNT: u8 = {
+                let mut count = 0;
+
+                let _ = Self::$dealers_choice;
+                count += 1;
+
+                $({
+                    let _ = Self::$sub_games;
+                    count += 1;
+                })+
+
+                count
+            };
+
+            pub const ALL: [Self; Self::COUNT as usize] = [
+                Self::$dealers_choice,
+                $(Self::$sub_games),+
+            ];
+
+            pub fn text(self) -> &'static str {
+                use $mode_name::*;
+                match self {
+                    $dealers_choice => $dealers_choice_name,
+                    $($sub_games => $sub_games_text),+
+                }
+            }
+        }
+
+        all_up_down_impl!{
+            $mode_name
+        }
+
+        #[derive(Clone)]
+        pub enum $mode {
+            Title(ModeName),
+            $dealers_choice($dealers_choice_table),
+            $($sub_games($sub_games_table)),+
+        }
+
+        #[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
+        enum $sub_game {
+            #[default]
+            $($sub_games),+
+        }
+
+        impl $sub_game {
+            pub const COUNT: u8 = {
+                let mut count = 0;
+
+                $({
+                    let _ = Self::$sub_games;
+                    count += 1;
+                })+
+
+                count
+            };
+
+            pub const ALL: [Self; Self::COUNT as usize] = [
+                $(Self::$sub_games),+
+            ];
+        }
+
+        all_up_down_impl!{
+            $sub_game
+        }
     }
 }
 
-#[derive(Clone)]
-pub enum Mode {
-    Title(ModeName),
-    DealersChoice(dealers_choice::Table),
-    Holdem(holdem::Table),
-    AceyDeucey(acey_deucey::Table),
+mode_def!{
+    {ModeName Mode SubGame}
+    DealersChoice => ("dealer's choice", dealers_choice::Table),
+    [
+        Holdem => ("dealer's choice", holdem::Table),
+        AceyDeucey => ("acey-deucey", acey_deucey::Table),
+//         FiveCardDraw => ("five-card draw", five_card_draw::Table)
+    ]
 }
 
 impl Default for Mode {
     fn default() -> Self {
         Self::Title(<_>::default())
+    }
+}
+
+impl SubGame {
+    pub const fn min_player_count(self) -> PlayerCount {
+        use SubGame::*;
+        match self {
+            Holdem => holdem::MIN_PLAYERS,
+            AceyDeucey => acey_deucey::MIN_PLAYERS,
+        }
+    }
+
+    pub const fn max_player_count(self) -> PlayerCount {
+        use SubGame::*;
+        match self {
+            Holdem => holdem::MAX_PLAYERS,
+            AceyDeucey => acey_deucey::MAX_PLAYERS,
+        }
+    }
+
+    pub fn text(self) -> &'static [u8] {
+        use SubGame::*;
+        match self {
+            Holdem => ModeName::Holdem,
+            AceyDeucey => ModeName::AceyDeucey,
+        }.text().as_bytes()
     }
 }
 
@@ -140,75 +260,6 @@ pub const OVERALL_MAX_PLAYER_COUNT: PlayerCount = {
     }
     output
 };
-
-#[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
-enum SubGame {
-    #[default]
-    Holdem,
-    AceyDeucey,
-}
-
-impl SubGame {
-    // TODO macro to make this list automatically
-    const ALL: [Self; 2] = [
-        Self::Holdem,
-        Self::AceyDeucey,
-    ];
-
-    pub const fn min_player_count(self) -> PlayerCount {
-        use SubGame::*;
-        match self {
-            Holdem => holdem::MIN_PLAYERS,
-            AceyDeucey => acey_deucey::MIN_PLAYERS,
-        }
-    }
-
-    pub const fn max_player_count(self) -> PlayerCount {
-        use SubGame::*;
-        match self {
-            Holdem => holdem::MAX_PLAYERS,
-            AceyDeucey => acey_deucey::MAX_PLAYERS,
-        }
-    }
-
-    pub fn wrapping_up(self) -> Self {
-        let mut index = self.index_of();
-        if index == 0 {
-            index = Self::ALL.len() - 1;
-        } else {
-            index = index.saturating_sub(1);
-        }
-
-        Self::ALL[index]
-    }
-
-    pub fn wrapping_down(self) -> Self {
-        let mut index = self.index_of();
-        index = index.saturating_add(1);
-        if index >= Self::ALL.len() {
-            index = 0;
-        }
-
-        Self::ALL[index]
-    }
-
-    fn index_of(self) -> usize {
-        let mut i = 0;
-        for game in Self::ALL {
-            if game == self { break }
-            i += 1;
-        }
-        i
-    }
-
-    pub fn text(self) -> &'static [u8] {
-        use SubGame::*;
-        match self {
-            Holdem => ModeName::Holdem,
-            AceyDeucey => ModeName::AceyDeucey,
-        }.text().as_bytes()
-    }
-}
 
 mod ui {
     use super::*;
@@ -669,10 +720,10 @@ fn title_update_and_render(
         GameSelect => {
             match input.dir_pressed_this_frame() {
                 Some(Dir::Up) => {
-                    state.mode_name.up();
+                    state.mode_name.wrapping_up();
                 }
                 Some(Dir::Down) => {
-                    state.mode_name.down();
+                    state.mode_name.wrapping_down();
                 }
                 Some(Dir::Left)
                 | Some(Dir::Right) => {
