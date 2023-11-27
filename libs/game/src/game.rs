@@ -7,6 +7,14 @@ use platform_types::{Button, Dir, Input, Speaker, SFX, command, unscaled, TEXT};
 
 use xs::{Xs, Seed};
 
+macro_rules! compile_time_assert {
+    ($assertion: expr) => (
+        #[allow(unknown_lints, clippy::eq_op)]
+        // Based on the const_assert macro from static_assertions;
+        const _: [(); 0 - !{$assertion} as usize] = [];
+    )
+}
+
 // TODO? should this just be in models?
 mod shared_game_types {
     use models::NonZeroMoneyInner;
@@ -54,20 +62,20 @@ macro_rules! all_up_down_impl {
                 } else {
                     index = index.saturating_sub(1);
                 }
-        
+
                 Self::ALL[index]
             }
-        
+
             fn wrapping_down(self) -> Self {
                 let mut index = self.index_of();
                 index = index.saturating_add(1);
                 if index >= Self::ALL.len() {
                     index = 0;
                 }
-        
+
                 Self::ALL[index]
             }
-        
+
             fn index_of(self) -> usize {
                 let mut i = 0;
                 for game in Self::ALL {
@@ -82,13 +90,20 @@ macro_rules! all_up_down_impl {
 
 macro_rules! mode_def {
     (
-        {$mode_name: ident $mode: ident $sub_game: ident}
+        {
+            $mode_name: ident
+            $mode: ident
+            $sub_game: ident
+            $sub_game_state: ident
+            $sub_game_bitset: ident
+            $sub_game_bits: ident
+        }
         $dealers_choice: ident => (
             $dealers_choice_name: literal,
             $dealers_choice_path: ident
         ),
         [
-            $($sub_games: ident => 
+            $($sub_games: ident =>
                 (
                     $sub_games_text: literal,
                     $sub_games_path: ident
@@ -131,6 +146,23 @@ macro_rules! mode_def {
                     $($sub_games => $sub_games_text),+
                 }
             }
+
+            pub fn new_mode(self) -> $mode {
+                match self {
+                    $mode_name::DealersChoice => {
+                        $mode::DealersChoice(<_>::default())
+                    },
+                    $mode_name::Holdem => {
+                        $mode::Holdem(<_>::default())
+                    },
+                    $mode_name::AceyDeucey => {
+                        $mode::AceyDeucey(<_>::default())
+                    },
+                    $mode_name::FiveCardDraw => {
+                        $mode::FiveCardDraw(<_>::default())
+                    },
+                }
+            }
         }
 
         all_up_down_impl!{
@@ -157,14 +189,14 @@ macro_rules! mode_def {
                     $($sub_games => $sub_games_path::MIN_PLAYERS),+
                 }
             }
-        
+
             pub const fn max_player_count(self) -> PlayerCount {
                 use $sub_game::*;
                 match self {
                     $($sub_games => $sub_games_path::MAX_PLAYERS),+
                 }
             }
-        
+
             pub fn text(self) -> &'static [u8] {
                 use $sub_game::*;
                 match self {
@@ -191,11 +223,33 @@ macro_rules! mode_def {
         all_up_down_impl!{
             $sub_game
         }
+
+        #[derive(Clone, Default)]
+        pub enum $sub_game_state {
+            #[default]
+            Choosing,
+            $($sub_games($sub_games_path::Table)),+
+        }
+
+        type $sub_game_bits = u8;
+
+        compile_time_assert!{
+            $sub_game_bits::BITS as usize >= $sub_game::ALL.len()
+        }
+
+        #[derive(Clone, Copy, Debug, Default)]
+        pub struct $sub_game_bitset($sub_game_bits);
+
+        impl $sub_game_bitset {
+            fn bit(game: $sub_game) -> $sub_game_bits {
+                1 << (game.index_of())
+            }
+        }
     }
 }
 
 mode_def!{
-    {ModeName Mode SubGame}
+    {ModeName Mode SubGame SubGameState SubGameBitset SubGameBits}
     DealersChoice => ("dealer's choice", dealers_choice),
     [
         Holdem => ("dealer's choice", holdem),
@@ -208,6 +262,69 @@ impl Default for Mode {
     fn default() -> Self {
         Self::Title(<_>::default())
     }
+}
+
+impl SubGameBitset {
+    fn contains(self, game: SubGame) -> bool {
+        let bit = Self::bit(game);
+
+        self.0 & bit == bit
+    }
+
+    fn toggle(&mut self, game: SubGame) {
+        let bit = Self::bit(game);
+
+        self.0 ^= bit;
+    }
+
+    fn len(self) -> u32 {
+        self.0.count_ones()
+    }
+
+    fn iter(self) -> impl Iterator<Item = SubGame> {
+        let mut index = 0;
+        std::iter::from_fn(move || {
+            while usize::from(index) < SubGame::ALL.len() {
+                let game = SubGame::ALL[index];
+
+                index += 1;
+
+                if self.contains(game) {
+                    return Some(game);
+                }
+            }
+
+            None
+        })
+    }
+}
+
+#[test]
+fn iter_over_full_is_all() {
+    let full = SubGameBitset((-1i128) as _);
+
+    let actual: Vec<_> = full.iter().collect();
+
+    assert_eq!(actual, SubGame::ALL.to_vec());
+}
+
+#[test]
+fn iter_works_on_these_examples() {
+    let actual: Vec<_> = SubGameBitset(0).iter().collect();
+
+    assert_eq!(actual, []);
+
+    let actual: Vec<_> = SubGameBitset(0b1).iter().collect();
+
+    assert_eq!(actual, [SubGame::Holdem]);
+
+    let actual: Vec<_> = SubGameBitset(0b10).iter().collect();
+
+    assert_eq!(actual, [SubGame::AceyDeucey]);
+
+    let actual: Vec<_> = SubGameBitset(0b11).iter().collect();
+
+    assert_eq!(actual, [SubGame::Holdem, SubGame::AceyDeucey]);
 }
 
 #[derive(Clone, Default)]
@@ -511,21 +628,7 @@ pub fn update_and_render(
             match title_cmd {
                 TitleCmd::NoOp => {},
                 TitleCmd::StartMode(name) => {
-                    // TODO move into mode_def macro
-                    *mode = match name {
-                        ModeName::DealersChoice => {
-                            Mode::DealersChoice(<_>::default())
-                        },
-                        ModeName::Holdem => {
-                            Mode::Holdem(<_>::default())
-                        },
-                        ModeName::AceyDeucey => {
-                            Mode::AceyDeucey(<_>::default())
-                        },
-                        ModeName::FiveCardDraw => {
-                            Mode::FiveCardDraw(<_>::default())
-                        },
-                    };
+                    *mode = name.new_mode();
                 },
             }
         }

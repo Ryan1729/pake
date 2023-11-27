@@ -6,21 +6,11 @@ use std::io::Write;
 
 use xs::Xs;
 
-use crate::{acey_deucey, five_card_draw, holdem, PlayerCount, SubGame, OVERALL_MAX_PLAYER_COUNT};
+use crate::{acey_deucey, five_card_draw, holdem, PlayerCount, SubGame, SubGameState, SubGameBitset, OVERALL_MAX_PLAYER_COUNT};
 use crate::shared_game_types::{CpuPersonality, Personality, ModeCmd, SkipState};
 use crate::ui::{self, draw_money_in_rect, stack_money_text, ButtonSpec, Id::*, do_button, do_checkbox};
 
 type Moneys = [Money; OVERALL_MAX_PLAYER_COUNT as usize];
-
-// TODO move into mode_def macro
-#[derive(Clone, Default)]
-enum SubGameState {
-    #[default]
-    Choosing,
-    Holdem(holdem::Table),
-    AceyDeucey(acey_deucey::Table),
-    FiveCardDraw(five_card_draw::Table),
-}
 
 #[derive(Clone)]
 pub enum TableState {
@@ -54,83 +44,6 @@ pub struct State<'state> {
     pub rng: &'state mut Xs,
     pub ctx: &'state mut ui::Context,
     pub table: &'state mut Table,
-}
-
-type SubGameBits = u8;
-// TODO move into mode_def macro
-#[derive(Clone, Copy, Debug, Default)]
-pub struct SubGameBitset(SubGameBits);
-
-impl SubGameBitset {
-    fn contains(self, game: SubGame) -> bool {
-        let bit = Self::bit(game);
-
-        self.0 & bit == bit
-    }
-
-    fn toggle(&mut self, game: SubGame) {
-        let bit = Self::bit(game);
-
-        self.0 ^= bit;
-    }
-
-    fn bit(game: SubGame) -> SubGameBits {
-        use SubGame::*;
-        match game {
-            Holdem => 1 << 0,
-            AceyDeucey => 1 << 1,
-            FiveCardDraw => 1 << 2,
-        }
-    }
-
-    fn len(self) -> u32 {
-        self.0.count_ones()
-    }
-
-    fn iter(self) -> impl Iterator<Item = SubGame> {
-        let mut index = 0;
-        std::iter::from_fn(move || {
-            while usize::from(index) < SubGame::ALL.len() {
-                let game = SubGame::ALL[index];
-
-                index += 1;
-
-                if self.contains(game) {
-                    return Some(game);
-                }
-            }
-            
-            None
-        })
-    }
-}
-
-#[test]
-fn iter_over_full_is_all() {
-    let full = SubGameBitset((-1i128) as _);
-
-    let actual: Vec<_> = full.iter().collect();
-
-    assert_eq!(actual, SubGame::ALL.to_vec());
-}
-
-#[test]
-fn iter_works_on_these_examples() {
-    let actual: Vec<_> = SubGameBitset(0).iter().collect();
-
-    assert_eq!(actual, []);
-
-    let actual: Vec<_> = SubGameBitset(0b1).iter().collect();
-
-    assert_eq!(actual, [SubGame::Holdem]);
-
-    let actual: Vec<_> = SubGameBitset(0b10).iter().collect();
-
-    assert_eq!(actual, [SubGame::AceyDeucey]);
-
-    let actual: Vec<_> = SubGameBitset(0b11).iter().collect();
-
-    assert_eq!(actual, [SubGame::Holdem, SubGame::AceyDeucey]);
 }
 
 fn clamp_player_count(
