@@ -878,12 +878,16 @@ fn title_update_and_render(
                     if let Some(arg) = args.next() {
                         // We currently prefer this to a FromStr impl because
                         // this way we keep everyting inside the feature cfg
+                        // TODO? put inside mode_cfg macro, inside a cfg as well?
                         match arg.as_str() {
                             "holdem" => {
                                 cmd = TitleCmd::StartMode(ModeName::Holdem);
                             }
                             "acey-deucey" => {
                                 cmd = TitleCmd::StartMode(ModeName::AceyDeucey);
+                            }
+                            "five-card-draw" => {
+                                cmd = TitleCmd::StartMode(ModeName::FiveCardDraw);
                             }
                             "dealers-choice" => {
                                 cmd = TitleCmd::StartMode(ModeName::DealersChoice);
