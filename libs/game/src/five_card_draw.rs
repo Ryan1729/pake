@@ -10,14 +10,6 @@ use xs::Xs;
 use crate::shared_game_types::{CpuPersonality, Personality, ModeCmd, SkipState};
 use crate::ui::{self, draw_money_in_rect, stack_money_text, ButtonSpec, Id::*, do_button};
 
-type Hands = ();
-
-fn deal(rng: &mut Xs) -> (Hands, Deck) {
-    let mut deck = gen_deck(rng);
-
-    ((), deck)
-}
-
 pub const MIN_PLAYERS: u8 = 2;
 // At 9 players that's 45 of 52 cards at the start, so each player only gets to draw
 // one card. That seems like the reasonable upper limit.
@@ -25,6 +17,39 @@ pub const MAX_PLAYERS: u8 = 9;
 
 pub type HandIndex = u8;
 pub const MAX_HAND_INDEX: u8 = MAX_PLAYERS - 1;
+
+type Hand = [Card; 5];
+
+type Hands = [Hand; MAX_PLAYERS as usize];
+
+fn deal(rng: &mut Xs, player_count: PlayerCount) -> (Hands, Deck) {
+    let mut deck = gen_deck(rng);
+
+    let mut hands = Hands::default();
+
+    let count = player_count.usize();
+
+    for hand in (&mut hands[0..count]).iter_mut() {
+        let (
+            Some(card1),
+            Some(card2),
+            Some(card3),
+            Some(card4),
+            Some(card5),
+        ) = (
+            deck.draw(),
+            deck.draw(),
+            deck.draw(),
+            deck.draw(),
+            deck.draw(),
+        )
+            else { continue };
+        *hand = [card1, card2, card3, card4, card5];
+    }
+
+    (hands, deck)
+}
+
 
 #[derive(Copy, Clone, Debug, Default, Eq, Ord, PartialEq, PartialOrd)]
 pub enum PlayerCount {
@@ -194,6 +219,7 @@ impl Default for MenuSelection {
 #[derive(Clone)]
 pub struct StateBundle {
     pub deck: Deck,
+    pub hands: Hands,
     pub current: HandIndex,
     pub pot: Pot,
     pub player_count: PlayerCount,
@@ -204,6 +230,15 @@ pub struct StateBundle {
 pub enum TableState {
     Undealt { player_count: PlayerCount, starting_money: MoneyInner },
     FirstRound {
+        bundle: StateBundle,
+    },
+    Drawing {
+        bundle: StateBundle,
+    },
+    SecondRound {
+        bundle: StateBundle,
+    },
+    Showdown {
         bundle: StateBundle,
     },
 }
@@ -248,7 +283,7 @@ impl Table {
             personalities[i] = Some(CpuPersonality{});
         }
 
-        let (_hands, deck) = deal(rng);
+        let (hands, deck) = deal(rng, player_count);
 
         let selected = gen_hand_index(rng, player_count);
 
@@ -280,6 +315,7 @@ impl Table {
             state: TableState::FirstRound {
                 bundle: StateBundle {
                     deck,
+                    hands,
                     current,
                     pot,
                     player_count,
@@ -320,9 +356,15 @@ pub fn update_and_render(
 
     let mut cmd = ModeCmd::NoOp;
 
+    #[derive(Copy, Clone, Debug, PartialEq, Eq)]
+    pub enum RoundOutcome {
+        Undetermined,
+        AdvanceToNext,
+    }
+
     macro_rules! do_five_card_draw {
         ($group: ident $(,)? $bundle: ident) => {
-
+            RoundOutcome::Undetermined
         }
     }
 
@@ -588,9 +630,56 @@ pub fn update_and_render(
             }
         },
         FirstRound {
-            bundle: _,
+            bundle,
         } => {
-            todo!();
+            let group = new_group!();
+            let outcome = do_five_card_draw!(group, bundle);
+
+            match outcome {
+                RoundOutcome::Undetermined => {},
+                RoundOutcome::AdvanceToNext => {
+                    todo!("AdvanceToNext from FirstRound");
+                },
+            }
+        }
+        Drawing {
+            bundle,
+        } => {
+            let group = new_group!();
+            let outcome = do_five_card_draw!(group, bundle);
+
+            match outcome {
+                RoundOutcome::Undetermined => {},
+                RoundOutcome::AdvanceToNext => {
+                    todo!("AdvanceToNext from Drawing");
+                },
+            }
+        }
+        SecondRound {
+            bundle,
+        } => {
+            let group = new_group!();
+            let outcome = do_five_card_draw!(group, bundle);
+
+            match outcome {
+                RoundOutcome::Undetermined => {},
+                RoundOutcome::AdvanceToNext => {
+                    todo!("AdvanceToNext from SecondRound");
+                },
+            }
+        }
+        Showdown {
+            bundle,
+        } => {
+            let group = new_group!();
+            let outcome = do_five_card_draw!(group, bundle);
+
+            match outcome {
+                RoundOutcome::Undetermined => {},
+                RoundOutcome::AdvanceToNext => {
+                    todo!("AdvanceToNext from Showdown");
+                },
+            }
         }
     }
 
