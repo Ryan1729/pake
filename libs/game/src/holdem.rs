@@ -1,7 +1,7 @@
-use gfx::{CHAR_SPACING_H, CHAR_SPACING_W, SPACING_H, SPACING_W, chart_block, Commands, pre_nul_len};
+use gfx::{CHAR_SPACING_H, CHAR_SPACING_W, SPACING_H, SPACING_W, Commands, HoldemFacing, chart_block, pre_nul_len};
 use look_up::{holdem::{ALL_SORTED_HANDS, hand_win_probability}};
 pub use models::{MIN_MONEY_UNIT, holdem::{PlayerIndex, MIN_PLAYERS, MAX_PLAYERS, HandIndex}};
-use models::{Deck, Money, MoneyInner, MoneyMove, NonZeroMoney, NonZeroMoneyInner, holdem::{MAX_POTS, Action, ActionKind, ActionSpec, AllowedKindMode, CommunityCards, Facing, FullBoard, Hand, HandLen, Hands, PerPlayer, Pot, PotAction, RoundOutcome, gen_action, gen_hand_index}};
+use models::{Deck, Money, MoneyInner, MoneyMove, NonZeroMoney, NonZeroMoneyInner, holdem::{MAX_POTS, Action, ActionKind, ActionSpec, AllowedKindMode, CommunityCards, FullBoard, Hand, HandLen, Hands, PerPlayer, Pot, PotAction, RoundOutcome, gen_action, gen_hand_index}};
 // TODO? Move Handlen into here, and rename it?
 pub use models::holdem::HandLen as PlayerCount;
 use platform_types::{Button, Dir, Input, PaletteIndex, Speaker, SFX, command, unscaled, TEXT};
@@ -389,15 +389,15 @@ pub fn update_and_render(
                         let facing = if let Some(_personality) = &state.table.seats.personalities[current_i] {
                             // TODO make decision based on personality
                             if cfg!(debug_assertions) {
-                                Facing::Up(hand)
+                                HoldemFacing::Up(hand)
                             } else {
-                                Facing::Down
+                                HoldemFacing::Down
                             }
                         } else {
                             if show_if_player_owned {
-                                Facing::Up(hand)
+                                HoldemFacing::Up(hand)
                             } else {
-                                Facing::Down
+                                HoldemFacing::Down
                             }
                         };
 
@@ -409,9 +409,9 @@ pub fn update_and_render(
                     } else {
                         let facing = if show_if_player_owned
                         && state.table.seats.personalities[current_i].is_none() {
-                            Facing::Up(hand)
+                            HoldemFacing::Up(hand)
                         } else {
-                            Facing::Down
+                            HoldemFacing::Down
                         };
 
                         group.commands.draw_holdem_hand(

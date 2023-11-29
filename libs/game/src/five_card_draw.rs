@@ -377,6 +377,7 @@ pub fn update_and_render(
             let player_count = $bundle.player_count;
 
             use platform_types::unscaled::xy;
+            // TODO Avoid overlapping hands
             let mut coords: [unscaled::XY; MAX_PLAYERS as usize] = [
                 xy!(0 0) ; MAX_PLAYERS as usize
             ];
@@ -430,17 +431,15 @@ pub fn update_and_render(
                         _ => false,
                     } && current == i;
 
-                    // TODO FiveCardDraw Facing type
-                    use models::holdem::Facing;
+                    use gfx::FiveCardFacing;
                     let facing = if show_if_player_owned
                     && state.table.seats.personalities[current_i].is_none() {
-                        // TODO FiveCardDraw Facing type
-                        Facing::Up([hand[0], hand[1]])
+                        FiveCardFacing::Up(*hand)
                     } else {
-                        Facing::Down
+                        FiveCardFacing::Down
                     };
 
-                    group.commands.draw_holdem_hand(
+                    group.commands.draw_five_card_hand(
                         facing,
                         at.x,
                         at.y,

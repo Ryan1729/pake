@@ -9,6 +9,21 @@ pub enum Highlighting {
     Highlighted,
 }
 
+#[derive(Copy, Clone, Default)]
+pub enum HoldemFacing {
+    #[default]
+    Down,
+    Up(holdem::Hand),
+}
+
+// TODO? Generic `Facing` type?
+#[derive(Copy, Clone, Default)]
+pub enum FiveCardFacing {
+    #[default]
+    Down,
+    Up([Card; 5]),
+}
+
 #[derive(Default)]
 pub struct Commands {
     commands: Vec<Command>,
@@ -110,8 +125,8 @@ impl Commands {
     }
 
     // TODO? Randomize these for visual interest? {
-    const HOLDEM_HAND_X_OFFSET: unscaled::W = unscaled::w_const_div(card::WIDTH, 2);
-    const HOLDEM_HAND_Y_OFFSET: unscaled::H = unscaled::H(0);
+    const HAND_X_OFFSET: unscaled::W = unscaled::w_const_div(card::WIDTH, 2);
+    const HAND_Y_OFFSET: unscaled::H = unscaled::H(0);
     // }
 
     pub fn draw_holdem_hand_underlight(
@@ -133,8 +148,8 @@ impl Commands {
             unscaled::Rect {
                 x: new_x,
                 y: new_y,
-                w: (SPACING_W + Self::HOLDEM_HAND_X_OFFSET + card::WIDTH + SPACING_W) - clipped_w,
-                h: (SPACING_H + Self::HOLDEM_HAND_Y_OFFSET + card::HEIGHT + SPACING_H) - clipped_h,
+                w: (SPACING_W + Self::HAND_X_OFFSET + card::WIDTH + SPACING_W) - clipped_w,
+                h: (SPACING_H + Self::HAND_Y_OFFSET + card::HEIGHT + SPACING_H) - clipped_h,
             },
         );
     }
@@ -175,32 +190,32 @@ impl Commands {
         y: unscaled::Y
     ) {
         self.draw_selected(
-            x + ((Self::HOLDEM_HAND_X_OFFSET + card::WIDTH) / 2),
+            x + ((Self::HAND_X_OFFSET + card::WIDTH) / 2),
             y,
         )
     }
 
     pub fn draw_holdem_hand(
         &mut self,
-        facing: holdem::Facing,
+        facing: HoldemFacing,
         x: unscaled::X,
         y: unscaled::Y
     ) {
         match facing {
-            holdem::Facing::Down => {
+            HoldemFacing::Down => {
                 self.draw_card_back(x, y);
-                self.draw_card_back(x + Self::HOLDEM_HAND_X_OFFSET, y + Self::HOLDEM_HAND_Y_OFFSET);
+                self.draw_card_back(x + Self::HAND_X_OFFSET, y + Self::HAND_Y_OFFSET);
             }
-            holdem::Facing::Up(hand) => {
+            HoldemFacing::Up(hand) => {
                 self.draw_card(hand[0], x, y);
-                self.draw_card(hand[1], x + Self::HOLDEM_HAND_X_OFFSET, y + Self::HOLDEM_HAND_Y_OFFSET);
+                self.draw_card(hand[1], x + Self::HAND_X_OFFSET, y + Self::HAND_Y_OFFSET);
             },
         }
     }
 
     pub fn draw_folded_holdem_hand(
         &mut self,
-        facing: holdem::Facing,
+        facing: HoldemFacing,
         x: unscaled::X,
         y: unscaled::Y
     ) {
@@ -208,8 +223,8 @@ impl Commands {
         let hand_rect = unscaled::Rect {
             x,
             y,
-            w: Self::HOLDEM_HAND_X_OFFSET + card::WIDTH,
-            h: Self::HOLDEM_HAND_Y_OFFSET + card::HEIGHT,
+            w: Self::HAND_X_OFFSET + card::WIDTH,
+            h: Self::HAND_Y_OFFSET + card::HEIGHT,
         };
 
         let rect = unscaled::Rect {
@@ -271,6 +286,30 @@ impl Commands {
                 step!(turn);
                 step!(river);
             }
+        }
+    }
+
+    pub fn draw_five_card_hand(
+        &mut self,
+        facing: FiveCardFacing,
+        mut x: unscaled::X,
+        mut y: unscaled::Y
+    ) {
+        match facing {
+            FiveCardFacing::Down => {
+                for _ in 0..5 {
+                    self.draw_card_back(x, y);
+                    x += Self::HAND_X_OFFSET;
+                    y += Self::HAND_Y_OFFSET;
+                }
+            }
+            FiveCardFacing::Up(hand) => {
+                for card in hand {
+                    self.draw_card(card, x, y);
+                    x += Self::HAND_X_OFFSET;
+                    y += Self::HAND_Y_OFFSET;
+                }
+            },
         }
     }
 

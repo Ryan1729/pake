@@ -632,13 +632,6 @@ pub mod holdem {
         }
     }
 
-    #[derive(Copy, Clone, Default)]
-    pub enum Facing {
-        #[default]
-        Down,
-        Up(Hand),
-    }
-
     pub type PlayerIndex = u8;
     /// Does not necessarily contain a valid number of players for a round.
     /// For a type with that guarentee see `HandLen`.
