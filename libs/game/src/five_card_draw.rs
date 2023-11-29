@@ -15,10 +15,16 @@ pub const MIN_PLAYERS: u8 = 2;
 // one card. That seems like the reasonable upper limit.
 pub const MAX_PLAYERS: u8 = 9;
 
+/// The index for a `Card` in a `Hand`.
+// TODO will we need this?
+//pub type CardIndex = u8;
+type Hand = [Card; 5];
+
+/// The index for a `Hand` in `Hands`, not for indexing into a `Hand`.
 pub type HandIndex = u8;
 pub const MAX_HAND_INDEX: u8 = MAX_PLAYERS - 1;
 
-type Hand = [Card; 5];
+pub type HandsLen = u8;
 
 type Hands = [Hand; MAX_PLAYERS as usize];
 
@@ -363,9 +369,89 @@ pub fn update_and_render(
     }
 
     macro_rules! do_five_card_draw {
-        ($group: ident $(,)? $bundle: ident) => {
+        ($group: ident $(,)? $bundle: ident) => ({
+            let group = $group;
+            let hands = &$bundle.hands;
+            let current = $bundle.current;
+            let current_i = usize::from(current);
+            let player_count = $bundle.player_count;
+
+            use platform_types::unscaled::xy;
+            let mut coords: [unscaled::XY; MAX_PLAYERS as usize] = [
+                xy!(0 0) ; MAX_PLAYERS as usize
+            ];
+
+            let hand_width = gfx::card::WIDTH.get() + (gfx::card::WIDTH.get() / 2) + 5;
+
+            {
+                let mut i = 0u8;
+                'outer: for y in 0..4 {
+                    for x in 0..7 {
+                        coords[usize::from(i)] = xy!(
+                            x * hand_width,
+                            y * ((gfx::card::HEIGHT.get() / 2) + 1)
+                            + SPACING_H.get()
+                        );
+
+                        i += 1;
+                        if i >= MAX_PLAYERS {
+                            break 'outer;
+                        }
+                    }
+                }
+            }
+
+            let hands_len: HandsLen = player_count.u8();
+
+            {
+                let mut i = 0;
+                for _ in hands.iter() {
+                    let at = coords[i];
+
+                    if current_i == i {
+                        group.commands.draw_holdem_hand_underlight(
+                            at.x,
+                            at.y
+                        );
+                    }
+
+                    i += 1;
+                }
+            }
+
+            {
+                let mut i: HandIndex = 0;
+                for hand in hands.iter() {
+                    let at = coords[usize::from(i)];
+
+                    let show_if_player_owned = match group.ctx.hot {
+                        FiveCardDrawHand(index) => index == i,
+                        FiveCardDrawMenu(_) => true,
+                        _ => false,
+                    } && current == i;
+
+                    // TODO FiveCardDraw Facing type
+                    use models::holdem::Facing;
+                    let facing = if show_if_player_owned
+                    && state.table.seats.personalities[current_i].is_none() {
+                        // TODO FiveCardDraw Facing type
+                        Facing::Up([hand[0], hand[1]])
+                    } else {
+                        Facing::Down
+                    };
+
+                    group.commands.draw_holdem_hand(
+                        facing,
+                        at.x,
+                        at.y,
+                    );
+
+                    i += 1;
+                }
+            }
+
             RoundOutcome::Undetermined
-        }
+        })
     }
 
     macro_rules! next_bundle {

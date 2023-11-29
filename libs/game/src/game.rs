@@ -389,6 +389,7 @@ mod ui {
 
     pub type HoldemMenuId = u8;
     pub type AceyDeuceyMenuId = u8;
+    pub type FiveCardDrawMenuId = u8;
 
     #[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
     pub enum Id {
@@ -400,7 +401,7 @@ mod ui {
         Submit,
         PlayerCountSelect,
         StartingMoneySelect,
-        HoldemHand(HandIndex),
+        HoldemHand(holdem::HandIndex),
         HoldemMenu(HoldemMenuId),
         HoldemChartButton,
         SkipRemainderOfGameSelect,
@@ -411,7 +412,9 @@ mod ui {
         HighLowSelect,
         HighLowSubmit,
         AcknowledgeCPUPass,
-        SubGameCheckbox(SubGame)
+        FiveCardDrawHand(five_card_draw::HandIndex),
+        FiveCardDrawMenu(FiveCardDrawMenuId),
+        SubGameCheckbox(SubGame),
     }
 
     #[derive(Copy, Clone, Default, Debug)]

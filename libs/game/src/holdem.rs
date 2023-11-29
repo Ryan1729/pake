@@ -1,7 +1,7 @@
 use gfx::{CHAR_SPACING_H, CHAR_SPACING_W, SPACING_H, SPACING_W, chart_block, Commands, pre_nul_len};
 use look_up::{holdem::{ALL_SORTED_HANDS, hand_win_probability}};
-pub use models::{MIN_MONEY_UNIT, holdem::{PlayerIndex, MIN_PLAYERS, MAX_PLAYERS}};
-use models::{Deck, Money, MoneyInner, MoneyMove, NonZeroMoney, NonZeroMoneyInner, holdem::{MAX_POTS, Action, ActionKind, ActionSpec, AllowedKindMode, CommunityCards, Facing, FullBoard, Hand, HandIndex, HandLen, Hands, PerPlayer, Pot, PotAction, RoundOutcome, gen_action, gen_hand_index}};
+pub use models::{MIN_MONEY_UNIT, holdem::{PlayerIndex, MIN_PLAYERS, MAX_PLAYERS, HandIndex}};
+use models::{Deck, Money, MoneyInner, MoneyMove, NonZeroMoney, NonZeroMoneyInner, holdem::{MAX_POTS, Action, ActionKind, ActionSpec, AllowedKindMode, CommunityCards, Facing, FullBoard, Hand, HandLen, Hands, PerPlayer, Pot, PotAction, RoundOutcome, gen_action, gen_hand_index}};
 // TODO? Move Handlen into here, and rename it?
 pub use models::holdem::HandLen as PlayerCount;
 use platform_types::{Button, Dir, Input, PaletteIndex, Speaker, SFX, command, unscaled, TEXT};
