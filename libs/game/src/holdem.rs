@@ -335,7 +335,7 @@ pub fn update_and_render(
                 xy!(0 0) ; models::holdem::MAX_PLAYERS as usize
             ];
 
-            let hand_width = gfx::card::WIDTH.get() + (gfx::card::WIDTH.get() / 2) + 5;
+            let hand_width = gfx::Commands::HOLDEM_HAND_WIDTH.get() + 5;
 
             {
                 let mut i = 0u8;

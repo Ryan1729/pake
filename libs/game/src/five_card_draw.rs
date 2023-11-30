@@ -382,15 +382,17 @@ pub fn update_and_render(
                 xy!(0 0) ; MAX_PLAYERS as usize
             ];
 
-            let hand_width = gfx::card::WIDTH.get() + (gfx::card::WIDTH.get() / 2) + 5;
+            // TODO derive this from a `gfx` const that we will know to keep in sync
+            // with any changes to the way cards are arranged when drawing?
+            let hand_width = gfx::Commands::FIVE_CARD_HAND_WIDTH.get() + SPACING_W.get();
 
             {
                 let mut i = 0u8;
-                'outer: for y in 0..4 {
-                    for x in 0..7 {
+                'outer: for y in 0..3 {
+                    for x in 0..3 {
                         coords[usize::from(i)] = xy!(
                             x * hand_width,
-                            y * ((gfx::card::HEIGHT.get() / 2) + 1)
+                            y * (gfx::card::HEIGHT.get() + SPACING_H.get())
                             + SPACING_H.get()
                         );
 
@@ -406,11 +408,11 @@ pub fn update_and_render(
 
             {
                 let mut i = 0;
-                for _ in hands.iter() {
+                for _ in 0..hands_len {
                     let at = coords[i];
 
                     if current_i == i {
-                        group.commands.draw_holdem_hand_underlight(
+                        group.commands.draw_five_card_hand_underlight(
                             at.x,
                             at.y
                         );
@@ -422,7 +424,7 @@ pub fn update_and_render(
 
             {
                 let mut i: HandIndex = 0;
-                for hand in hands.iter() {
+                for hand in &hands[0..(hands_len as usize)] {
                     let at = coords[usize::from(i)];
 
                     let show_if_player_owned = match group.ctx.hot {
@@ -447,6 +449,128 @@ pub fn update_and_render(
 
                     i += 1;
                 }
+            }
+
+            {
+                let mut i = 0;
+                for _ in hands.iter() {
+                    let at = coords[i];
+
+                    match group.ctx.hot {
+                        FiveCardDrawHand(index) if usize::from(index) == i => {
+                            group.commands.draw_five_card_hand_selected(
+                                at.x,
+                                at.y
+                            );
+                        },
+                        _ => {},
+                    };
+
+                    i += 1;
+                }
+            }
+
+            const MENU_H: unscaled::H = unscaled::h_const_div(
+                command::HEIGHT_H,
+                6
+            );
+
+            const MENU_RECT: unscaled::Rect = unscaled::Rect {
+                x: unscaled::X(0),
+                y: unscaled::y_const_add_h(
+                    unscaled::Y(0),
+                    unscaled::h_const_sub(
+                        command::HEIGHT_H,
+                        MENU_H
+                    )
+                ),
+                w: command::WIDTH_W,
+                h: MENU_H,
+            };
+
+            const HAND_DESC_H: unscaled::H = unscaled::h_const_div(
+                command::HEIGHT_H,
+                4
+            );
+
+            const HAND_DESC_RECT: unscaled::Rect = unscaled::Rect {
+                x: unscaled::X(0),
+                y: unscaled::y_const_add_h(
+                    unscaled::Y(0),
+                    unscaled::h_const_sub(
+                        command::HEIGHT_H,
+                        HAND_DESC_H
+                    )
+                ),
+                w: command::WIDTH_W,
+                h: HAND_DESC_H,
+            };
+
+            const ACTION_KIND: ui::FiveCardDrawMenuId = 0;
+            const MENU_KIND_ONE_PAST_MAX: ui::FiveCardDrawMenuId = 1;
+
+            let mut i = 0;
+            for _ in 0..hands_len {
+                match group.ctx.hot {
+                    FiveCardDrawHand(mut index) if usize::from(index) == i => {
+                        stack_money_text!(money_text = state.table.seats.moneys[i]);
+
+                        group.commands.draw_nine_slice(
+                            gfx::NineSlice::Button,
+                            HAND_DESC_RECT
+                        );
+
+                        {
+                            let x = HAND_DESC_RECT.x + SPACING_W;
+                            let mut y = HAND_DESC_RECT.y + gfx::CHAR_H;
+                            group.commands.print_chars(
+                                &money_text,
+                                x,
+                                y,
+                                TEXT
+                            );
+                            y += gfx::CHAR_LINE_ADVANCE;
+
+                            if current_i == i {
+                                group.commands.print_chars(
+                                    b"current",
+                                    x,
+                                    y,
+                                    TEXT
+                                );
+                            }
+                        }
+
+                        if group.input.pressed_this_frame(Button::LEFT) {
+                            if index == 0 {
+                                group.ctx.set_next_hot(FiveCardDrawHand(hands_len - 1));
+                            } else {
+                                index -= 1;
+                                group.ctx.set_next_hot(FiveCardDrawHand(index));
+                            }
+                        } else if group.input.pressed_this_frame(Button::RIGHT) {
+                            index += 1;
+                            if index >= hands_len {
+                                group.ctx.set_next_hot(FiveCardDrawHand(0));
+                            } else {
+                                group.ctx.set_next_hot(FiveCardDrawHand(index));
+                            }
+                        } else if group.input.pressed_this_frame(Button::A) {
+                            group.ctx.set_next_hot(FiveCardDrawHand(ACTION_KIND));
+                        } else {
+                            group.ctx.set_next_hot(FiveCardDrawHand(index));
+                        }
+
+                        break
+                    }
+                    _ => {}
+                }
+
+                i += 1;
+            }
+
+            if let Zero = group.ctx.hot {
+                group.ctx.set_next_hot(FiveCardDrawHand(0));
             }
 
             RoundOutcome::Undetermined

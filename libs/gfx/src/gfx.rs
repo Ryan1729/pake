@@ -124,10 +124,21 @@ impl Commands {
         );
     }
 
-    // TODO? Randomize these for visual interest? {
+    // TODO? Randomize these for visual interest?
+    // Would need to make some consts non-const.
+    // {
     const HAND_X_OFFSET: unscaled::W = unscaled::w_const_div(card::WIDTH, 2);
     const HAND_Y_OFFSET: unscaled::H = unscaled::H(0);
     // }
+
+    pub const HOLDEM_HAND_WIDTH: unscaled::W = unscaled::w_const_add(
+        Self::HAND_X_OFFSET,
+        card::WIDTH,
+    );
+    pub const HOLDEM_HAND_HEIGHT: unscaled::H = unscaled::h_const_add(
+        Self::HAND_Y_OFFSET,
+        card::HEIGHT,
+    );
 
     pub fn draw_holdem_hand_underlight(
         &mut self,
@@ -148,8 +159,42 @@ impl Commands {
             unscaled::Rect {
                 x: new_x,
                 y: new_y,
-                w: (SPACING_W + Self::HAND_X_OFFSET + card::WIDTH + SPACING_W) - clipped_w,
-                h: (SPACING_H + Self::HAND_Y_OFFSET + card::HEIGHT + SPACING_H) - clipped_h,
+                w: (SPACING_W + Self::HOLDEM_HAND_WIDTH + SPACING_W) - clipped_w,
+                h: (SPACING_H + Self::HOLDEM_HAND_HEIGHT + SPACING_H) - clipped_h,
+            },
+        );
+    }
+
+    pub const FIVE_CARD_HAND_WIDTH: unscaled::W = unscaled::w_const_mul(
+        Self::HAND_X_OFFSET,
+        5 + 1
+    );
+    pub const FIVE_CARD_HAND_HEIGHT: unscaled::H = unscaled::h_const_add(
+        Self::HAND_Y_OFFSET,
+        card::HEIGHT,
+    );
+
+    pub fn draw_five_card_hand_underlight(
+        &mut self,
+        x: unscaled::X,
+        y: unscaled::Y
+    ) {
+        let (new_x, clipped_w) = match x.checked_sub(SPACING_W) {
+            Some(n_x) => (n_x, unscaled::W(0)),
+            None => (unscaled::X(0), unscaled::W(SPACING_W.get() - x.get())),
+        };
+        let (new_y, clipped_h) = match y.checked_sub(SPACING_H) {
+            Some(n_y) => (n_y, unscaled::H(0)),
+            None => (unscaled::Y(0), unscaled::H(SPACING_H.get() - y.get())),
+        };
+
+        self.draw_nine_slice(
+            NineSlice::Highlight,
+            unscaled::Rect {
+                x: new_x,
+                y: new_y,
+                w: (SPACING_W + Self::FIVE_CARD_HAND_WIDTH + SPACING_W) - clipped_w,
+                h: (SPACING_H + Self::FIVE_CARD_HAND_HEIGHT + SPACING_H) - clipped_h,
             },
         );
     }
@@ -190,7 +235,18 @@ impl Commands {
         y: unscaled::Y
     ) {
         self.draw_selected(
-            x + ((Self::HAND_X_OFFSET + card::WIDTH) / 2),
+            x + (Self::HOLDEM_HAND_WIDTH / 2),
+            y,
+        )
+    }
+
+    pub fn draw_five_card_hand_selected(
+        &mut self,
+        x: unscaled::X,
+        y: unscaled::Y
+    ) {
+        self.draw_selected(
+            x + (Self::FIVE_CARD_HAND_WIDTH / 2),
             y,
         )
     }
