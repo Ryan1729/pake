@@ -252,7 +252,7 @@ mode_def!{
     {ModeName Mode SubGame SubGameState SubGameBitset SubGameBits}
     DealersChoice => ("dealer's choice", dealers_choice),
     [
-        Holdem => ("dealer's choice", holdem),
+        Holdem => ("texas hold'em", holdem),
         AceyDeucey => ("acey-deucey", acey_deucey),
         FiveCardDraw => ("five-card draw", five_card_draw),
     ]
@@ -839,10 +839,10 @@ fn title_update_and_render(
         GameSelect => {
             match input.dir_pressed_this_frame() {
                 Some(Dir::Up) => {
-                    state.mode_name.wrapping_up();
+                    *state.mode_name = state.mode_name.wrapping_up();
                 }
                 Some(Dir::Down) => {
-                    state.mode_name.wrapping_down();
+                    *state.mode_name = state.mode_name.wrapping_down();
                 }
                 Some(Dir::Left)
                 | Some(Dir::Right) => {
