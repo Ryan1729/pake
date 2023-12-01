@@ -573,6 +573,19 @@ pub fn update_and_render(
                 group.ctx.set_next_hot(FiveCardDrawHand(0));
             }
 
+            const POT_BASE_X: unscaled::X = unscaled::X(150);
+            const POT_BASE_Y: unscaled::Y = unscaled::Y(225);
+
+            stack_money_text!(pot_text = $bundle.pot);
+
+            group.commands.print_chars(
+                &pot_text,
+                POT_BASE_X - pre_nul_len(&pot_text) * gfx::CHAR_ADVANCE,
+                POT_BASE_Y,
+                TEXT
+            );
+
+
             RoundOutcome::Undetermined
         })
     }
