@@ -652,6 +652,11 @@ pub fn update_and_render(
                     .as_inner();
             }
 
+            // TODO extract out a version of this that doesn't depend on hold'em
+            // specific stuff or has that passed in, so we can sue it for Five 
+            // Card Draw and more games later. Might make sense to make a skeleton
+            // for a third example as well.
+
             let action_opt = match (
                 pot.has_folded(current),
                 &state.table.seats.personalities[current_i]
