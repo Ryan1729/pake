@@ -2,7 +2,7 @@
 #![deny(unreachable_patterns)]
 
 use gfx::{CHAR_SPACING_W, SPACING_H, Commands};
-use models::{holdem::{HandIndex}};
+use models::{OVERALL_MAX_PLAYER_COUNT, PlayerCount, holdem::{HandIndex}};
 use platform_types::{Button, Dir, Input, Speaker, SFX, command, unscaled, TEXT};
 
 use xs::{Xs, Seed};
@@ -327,6 +327,31 @@ fn iter_works_on_these_examples() {
     assert_eq!(actual, [SubGame::Holdem, SubGame::AceyDeucey]);
 }
 
+const CALCULATED_OVERALL_MAX_PLAYER_COUNT: PlayerCount = {
+    let mut i = 0;
+    let mut output = 0;
+    while i < SubGame::ALL.len() {
+        let max_player_count = SubGame::ALL[i].max_player_count();
+        if max_player_count > output {
+            output = max_player_count;
+        }
+
+        i += 1;
+    }
+    output
+};
+
+compile_time_assert!{
+    CALCULATED_OVERALL_MAX_PLAYER_COUNT == 22
+}
+
+// We want to avoid having `models` rely on SubGame, but `models` needs to know what
+// `OVERALL_MAX_PLAYER_COUNT` is. This seesmed like the best option among other 
+// alternatives.
+compile_time_assert!{
+    OVERALL_MAX_PLAYER_COUNT == CALCULATED_OVERALL_MAX_PLAYER_COUNT
+}
+
 #[derive(Clone, Default)]
 pub struct State {
     pub rng: Xs,
@@ -357,23 +382,6 @@ impl State {
         }
     }
 }
-
-// TODO? Restrict selection to minimum of selected games' max player count at the type level?
-type PlayerCount = u8;
-
-pub const OVERALL_MAX_PLAYER_COUNT: PlayerCount = {
-    let mut i = 0;
-    let mut output = 0;
-    while i < SubGame::ALL.len() {
-        let max_player_count = SubGame::ALL[i].max_player_count();
-        if max_player_count > output {
-            output = max_player_count;
-        }
-
-        i += 1;
-    }
-    output
-};
 
 mod ui {
     use super::*;

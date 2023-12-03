@@ -1,7 +1,7 @@
 use gfx::{CHAR_SPACING_H, CHAR_SPACING_W, SPACING_H, SPACING_W, Commands, HoldemFacing, chart_block, pre_nul_len};
 use look_up::{holdem::{ALL_SORTED_HANDS, hand_win_probability}};
-pub use models::{MIN_MONEY_UNIT, holdem::{PlayerIndex, MIN_PLAYERS, MAX_PLAYERS, HandIndex}};
-use models::{Deck, Money, MoneyInner, MoneyMove, NonZeroMoney, NonZeroMoneyInner, holdem::{MAX_POTS, Action, ActionKind, ActionSpec, AllowedKindMode, CommunityCards, FullBoard, Hand, HandLen, Hands, PerPlayer, Pot, PotAction, RoundOutcome, gen_action, gen_hand_index}};
+pub use models::{MIN_MONEY_UNIT, Pot, PotAction, RoundOutcome, holdem::{PlayerIndex, MIN_PLAYERS, MAX_PLAYERS, HandIndex}};
+use models::{Deck, Money, MoneyInner, MoneyMove, NonZeroMoney, NonZeroMoneyInner, holdem::{MAX_POTS, Action, ActionKind, ActionSpec, AllowedKindMode, CommunityCards, FullBoard, Hand, HandLen, Hands, PerPlayer, gen_action, gen_hand_index}};
 // TODO? Move Handlen into here, and rename it?
 pub use models::holdem::HandLen as PlayerCount;
 use platform_types::{Button, Dir, Input, PaletteIndex, Speaker, SFX, command, unscaled, TEXT};
@@ -212,7 +212,7 @@ impl Table {
             selected
         };
 
-        let mut pot = Pot::with_capacity(player_count, 16);
+        let mut pot = Pot::with_capacity(player_count.u8(), 16);
 
         let mut seats = Seats {
             moneys,
@@ -655,7 +655,7 @@ pub fn update_and_render(
             // TODO extract out a version of this that doesn't depend on hold'em
             // specific stuff or has that passed in, so we can sue it for Five 
             // Card Draw and more games later. Might make sense to make a skeleton
-            // for a third example as well.
+            // for a third example as wel
 
             let action_opt = match (
                 pot.has_folded(current),
@@ -1362,7 +1362,7 @@ pub fn update_and_render(
 
                         let dealer = gen_hand_index(rng, player_count);
 
-                        let mut pot = Pot::with_capacity(player_count, 16);
+                        let mut pot = Pot::with_capacity(player_count.u8(), 16);
 
                         let seats_ref = &mut state.table.seats;
 
