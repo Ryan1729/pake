@@ -1,5 +1,5 @@
 use gfx::{card, pre_nul_len, Commands, SPACING_W, SPACING_H};
-use models::{Card, CardBitset, ALL_CARDS, INITIAL_ANTE_AMOUNT, MIN_MONEY_UNIT, Deck, Money, MoneyInner, MoneyMove, NonZeroMoney, NonZeroMoneyInner, Rank, gen_deck, get_rank, ranks};
+use models::{Card, CardBitset, ALL_CARDS, INITIAL_ANTE_AMOUNT, MIN_MONEY_UNIT, Deck, Money, MoneyInner, MoneyMove, NonZeroMoney, NonZeroMoneyInner, Pot, PotAction, Rank, gen_deck, get_rank, ranks};
 use platform_types::{Button, Dir, Input, PaletteIndex, Speaker, SFX, command, unscaled, TEXT};
 use probability::{EvalCount};
 
@@ -147,7 +147,7 @@ impl TryFrom<u8> for PlayerCount {
             7 => Ok(Seven),
             8 => Ok(Eight),
             9 => Ok(Nine),
-            _ => Err("player count was too big"),
+            _ => Err("player count was to big"),
         }
     }
 }
@@ -156,14 +156,26 @@ pub fn gen_hand_index(rng: &mut Xs, player_count: PlayerCount) -> HandIndex {
     xs::range(rng, 0..player_count.u8() as _) as HandIndex
 }
 
-#[derive(Clone, Default)]
+#[derive(Clone)]
 pub struct Seats {
     pub moneys: [Money; MAX_PLAYERS as usize],
     pub personalities: [Personality; MAX_PLAYERS as usize],
     pub skip: SkipState,
+    // TODO Increase these as the game goes on {
+    pub ante: NonZeroMoneyInner,
+    // }
 }
 
-type Pot = Money;
+impl Default for Seats {
+    fn default() -> Self {
+        Self {
+            moneys: <_>::default(),
+            personalities: <_>::default(),
+            skip: <_>::default(),
+            ante: MIN_MONEY_UNIT,
+        }
+    }
+}
 
 #[derive(Clone, Debug, Default)]
 pub enum Action {
@@ -295,14 +307,18 @@ impl Table {
         player_count: PlayerCount,
         mut moneys: [Money; MAX_PLAYERS as usize],
     ) -> Self {
-        let mut pot: Pot = Money::ZERO;
+        let mut pot: Pot = Pot::with_capacity(player_count.u8(), 16);
 
-        for i in 0..player_count.usize() {
-            MoneyMove {
-                from: &mut moneys[i],
-                to: &mut pot,
-                amount: INITIAL_ANTE_AMOUNT,
-            }.perform();
+        let ante = MIN_MONEY_UNIT;
+
+        for i in 0..player_count.u8() {
+            pot.push_bet(
+                i, 
+                PotAction::Bet(
+                    moneys[usize::from(i)]
+                        .take(ante.get())
+                )
+            );
         }
 
         let mut personalities: [Personality; MAX_PLAYERS as usize] = <_>::default();
@@ -342,6 +358,7 @@ impl Table {
                 moneys,
                 personalities,
                 skip: <_>::default(),
+                ante,
             },
             state: TableState::FirstRound {
                 bundle: StateBundle {
@@ -400,6 +417,7 @@ pub fn update_and_render(
             let current = $bundle.current;
             let current_i = usize::from(current);
             let player_count = $bundle.player_count;
+            let pot = &mut $bundle.pot;
 
             use platform_types::unscaled::xy;
             // TODO Avoid overlapping hands
@@ -530,7 +548,7 @@ pub fn update_and_render(
                 w: command::WIDTH_W,
                 h: HAND_DESC_H,
             };
-/*
+
             // The total bet needed to call
             let call_amount = pot.call_amount();
             let minimum_raise_total = call_amount + MIN_MONEY_UNIT.get();
@@ -551,7 +569,7 @@ pub fn update_and_render(
                 } else {
                     AllowedKindMode::AllIn
                 };
-*/
+
             const ACTION_KIND: ui::FiveCardDrawMenuId = 0;
             const MONEY_AMOUNT: ui::FiveCardDrawMenuId = 1;
             const SUBMIT: ui::FiveCardDrawMenuId = 2;
@@ -624,14 +642,24 @@ pub fn update_and_render(
             const POT_BASE_X: unscaled::X = unscaled::X(150);
             const POT_BASE_Y: unscaled::Y = unscaled::Y(225);
 
-            stack_money_text!(pot_text = $bundle.pot);
+            {
+                let mut y = POT_BASE_Y;
+                for amount in pot.individual_pots(&state.table.seats.moneys) {
+                    stack_money_text!(main_pot_text = amount);
 
-            group.commands.print_chars(
-                &pot_text,
-                POT_BASE_X - pre_nul_len(&pot_text) * gfx::CHAR_ADVANCE,
-                POT_BASE_Y,
-                TEXT
-            );
+                    group.commands.print_chars(
+                        &main_pot_text,
+                        POT_BASE_X - pre_nul_len(&main_pot_text) * gfx::CHAR_ADVANCE,
+                        y,
+                        TEXT
+                    );
+
+                    y += gfx::CHAR_LINE_ADVANCE;
+                }
+
+                // TODO confirm this looks okay with the maximum number of amounts
+                // which would be some function of MAX_PLAYERS. Exactly MAX_PLAYERS?
+            }
 /*
             if $bundle.selection.bet < minimum_raise_total {
                 $bundle.selection.bet = minimum_raise_total;
