@@ -96,4 +96,17 @@ pub mod holdem {
     }
 }
 
+pub mod five_card {
+    use probability::{Probability};
+    use models::{ALL_CARDS, DECK_SIZE, Card};
+
+    // 5 cards seems like too many to use a static array of sorted hands.
+    // Later games will definitely have too many, so we should have a way
+    // to produce a reasonable probability without a static array!
+
+    pub fn hand_win_probability(hand: [Card; 5]) -> Probability {
+        todo!("{hand:?}")
+    }
+}
+
 

@@ -519,6 +519,118 @@ macro_rules! per_player {
     }
 }
 
+#[derive(Clone, Debug, Default)]
+pub enum Action {
+    #[default]
+    Fold,
+    Call,
+    Raise(MoneyInner)
+}
+
+#[derive(Debug)]
+pub struct ActionSpec {
+    pub one_past_max_money: NonZeroMoneyInner,
+    pub min_money_unit: NonZeroMoneyInner,
+    pub minimum_raise_total: MoneyInner,
+}
+
+pub fn gen_action(
+    rng: &mut Xs,
+    ActionSpec {
+        one_past_max_money,
+        min_money_unit,
+        minimum_raise_total
+    }: ActionSpec
+) -> Action {
+    use Action::*;
+
+    match xs::range(rng, 0..3) {
+        0 => Fold,
+        1 => Call,
+        _ => {
+            // TODO? Maybe just take max_money as a param?
+            let max_money = one_past_max_money.get() - 1;
+
+            if minimum_raise_total > max_money {
+                // Go all in
+                Call
+            } else {
+                let max_in_units: MoneyInner = max_money/min_money_unit.get();
+                let min_in_units: MoneyInner = minimum_raise_total/min_money_unit.get();
+                let output_in_units = xs::range(rng, min_in_units..core::cmp::max(min_in_units, max_in_units).saturating_add(1)) as MoneyInner;
+                let output_in_money = output_in_units.saturating_mul(min_money_unit.get());
+
+                Raise(output_in_money)
+            }
+        }
+    }
+}
+
+#[derive(Copy, Clone, Debug, Default, Eq, PartialEq)]
+pub enum ActionKind {
+    #[default]
+    Fold,
+    Call,
+    Raise,
+}
+
+impl ActionKind {
+    pub fn text(self) -> &'static [u8] {
+        use ActionKind::*;
+        match self {
+            Fold => b"fold",
+            Call => b"call",
+            Raise => b"raise",
+        }
+    }
+}
+
+#[derive(Copy, Clone, Debug, Default, Eq, PartialEq)]
+pub enum AllowedKindMode {
+    #[default]
+    All,
+    NoFolding,
+    AllIn,
+}
+
+impl ActionKind {
+    pub fn next_up(self, mode: AllowedKindMode) -> Self {
+        use ActionKind::*;
+        use AllowedKindMode::*;
+        match mode {
+            All => match self {
+                Fold => Call,
+                Call => Raise,
+                Raise => Fold,
+            },
+            NoFolding => match self {
+                Fold => Call,
+                Call => Raise,
+                Raise => Call,
+            },
+            AllIn => Call,
+        }
+    }
+
+    pub fn next_down(self, mode: AllowedKindMode) -> Self {
+        use ActionKind::*;
+        use AllowedKindMode::*;
+        match mode {
+            All => match self {
+                Fold => Raise,
+                Call => Fold,
+                Raise => Call,
+            },
+            NoFolding => match self {
+                Fold => Raise,
+                Call => Raise,
+                Raise => Call,
+            },
+            AllIn => Call,
+        }
+    }
+}
+
 mod pot {
     use super::*;
 
@@ -1148,118 +1260,6 @@ pub mod holdem {
             hand[1] = temp;
         }
         [card_text_byte(hand[0]), card_text_byte(hand[1])]
-    }
-
-    #[derive(Clone, Debug, Default)]
-    pub enum Action {
-        #[default]
-        Fold,
-        Call,
-        Raise(MoneyInner)
-    }
-
-    #[derive(Debug)]
-    pub struct ActionSpec {
-        pub one_past_max_money: NonZeroMoneyInner,
-        pub min_money_unit: NonZeroMoneyInner,
-        pub minimum_raise_total: MoneyInner,
-    }
-
-    pub fn gen_action(
-        rng: &mut Xs,
-        ActionSpec {
-            one_past_max_money,
-            min_money_unit,
-            minimum_raise_total
-        }: ActionSpec
-    ) -> Action {
-        use Action::*;
-
-        match xs::range(rng, 0..3) {
-            0 => Fold,
-            1 => Call,
-            _ => {
-                // TODO? Maybe just take max_money as a param?
-                let max_money = one_past_max_money.get() - 1;
-
-                if minimum_raise_total > max_money {
-                    // Go all in
-                    Call
-                } else {
-                    let max_in_units: MoneyInner = max_money/min_money_unit.get();
-                    let min_in_units: MoneyInner = minimum_raise_total/min_money_unit.get();
-                    let output_in_units = xs::range(rng, min_in_units..core::cmp::max(min_in_units, max_in_units).saturating_add(1)) as MoneyInner;
-                    let output_in_money = output_in_units.saturating_mul(min_money_unit.get());
-
-                    Raise(output_in_money)
-                }
-            }
-        }
-    }
-
-    #[derive(Copy, Clone, Debug, Default, Eq, PartialEq)]
-    pub enum ActionKind {
-        #[default]
-        Fold,
-        Call,
-        Raise,
-    }
-
-    impl ActionKind {
-        pub fn text(self) -> &'static [u8] {
-            use ActionKind::*;
-            match self {
-                Fold => b"fold",
-                Call => b"call",
-                Raise => b"raise",
-            }
-        }
-    }
-
-    #[derive(Copy, Clone, Debug, Default, Eq, PartialEq)]
-    pub enum AllowedKindMode {
-        #[default]
-        All,
-        NoFolding,
-        AllIn,
-    }
-
-    impl ActionKind {
-        pub fn next_up(self, mode: AllowedKindMode) -> Self {
-            use ActionKind::*;
-            use AllowedKindMode::*;
-            match mode {
-                All => match self {
-                    Fold => Call,
-                    Call => Raise,
-                    Raise => Fold,
-                },
-                NoFolding => match self {
-                    Fold => Call,
-                    Call => Raise,
-                    Raise => Call,
-                },
-                AllIn => Call,
-            }
-        }
-
-        pub fn next_down(self, mode: AllowedKindMode) -> Self {
-            use ActionKind::*;
-            use AllowedKindMode::*;
-            match mode {
-                All => match self {
-                    Fold => Raise,
-                    Call => Fold,
-                    Raise => Call,
-                },
-                NoFolding => match self {
-                    Fold => Raise,
-                    Call => Raise,
-                    Raise => Call,
-                },
-                AllIn => Call,
-            }
-        }
     }
 
     pub type PlayerIndex = u8;

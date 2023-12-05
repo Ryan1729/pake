@@ -67,7 +67,27 @@ pub fn holdem_hand(community_cards: holdem::CommunityCards, hand: holdem::Hand) 
     match poker::evaluate::static_lookup::evaluate(&cards[..len]) {
         Ok(eval) => Eval(eval),
         Err(err) => {
-            debug_assert!(false, "evaluate Err: {err}");
+            debug_assert!(false, "holdem_hand: evaluate Err: {err}");
+            Eval::default()
+        },
+    }
+}
+
+pub fn five_card_hand(hand: [models::Card; 5]) -> Eval {
+    use holdem::CommunityCards::*;
+
+    let mut cards = [to_poker_card(0); 5];
+
+    cards[0] = to_poker_card(hand[0]);
+    cards[1] = to_poker_card(hand[1]);
+    cards[2] = to_poker_card(hand[2]);
+    cards[3] = to_poker_card(hand[3]);
+    cards[4] = to_poker_card(hand[4]);
+
+    match poker::evaluate::static_lookup::evaluate(&cards[..]) {
+        Ok(eval) => Eval(eval),
+        Err(err) => {
+            debug_assert!(false, "five_card_hand: evaluate Err: {err}");
             Eval::default()
         },
     }

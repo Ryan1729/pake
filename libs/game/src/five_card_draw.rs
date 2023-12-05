@@ -1,7 +1,11 @@
+use look_up::{
+    five_card::{hand_win_probability},
+};
 use gfx::{card, pre_nul_len, Commands, SPACING_W, SPACING_H};
-use models::{Card, CardBitset, ALL_CARDS, INITIAL_ANTE_AMOUNT, MIN_MONEY_UNIT, Deck, Money, MoneyInner, MoneyMove, NonZeroMoney, NonZeroMoneyInner, Pot, PotAction, Rank, gen_deck, get_rank, ranks};
+use models::{Action, ActionKind, ActionSpec, AllowedKindMode, Card, CardBitset, ALL_CARDS, INITIAL_ANTE_AMOUNT, MIN_MONEY_UNIT, Deck, Money, MoneyInner, MoneyMove, NonZeroMoney, NonZeroMoneyInner, Pot, PotAction, Rank, gen_action, gen_deck, get_rank, ranks};
 use platform_types::{Button, Dir, Input, PaletteIndex, Speaker, SFX, command, unscaled, TEXT};
 use probability::{EvalCount};
+use probability::{FIFTY_PERCENT, SEVENTY_FIVE_PERCENT, EIGHTY_SEVEN_POINT_FIVE_PERCENT, Probability};
 
 use std::io::Write;
 
@@ -173,82 +177,6 @@ impl Default for Seats {
             personalities: <_>::default(),
             skip: <_>::default(),
             ante: MIN_MONEY_UNIT,
-        }
-    }
-}
-
-#[derive(Clone, Debug, Default)]
-pub enum Action {
-    #[default]
-    Fold,
-    Call,
-    Raise(MoneyInner)
-}
-
-// TODO reduce duplication with hold'em impl, including a substantive amount of the
-// UI code.
-
-#[derive(Copy, Clone, Debug, Default, Eq, PartialEq)]
-pub enum ActionKind {
-    #[default]
-    Fold,
-    Call,
-    Raise,
-}
-
-impl ActionKind {
-    pub fn text(self) -> &'static [u8] {
-        use ActionKind::*;
-        match self {
-            Fold => b"fold",
-            Call => b"call",
-            Raise => b"raise",
-        }
-    }
-}
-
-#[derive(Copy, Clone, Debug, Default, Eq, PartialEq)]
-pub enum AllowedKindMode {
-    #[default]
-    All,
-    NoFolding,
-    AllIn,
-}
-
-impl ActionKind {
-    pub fn next_up(self, mode: AllowedKindMode) -> Self {
-        use ActionKind::*;
-        use AllowedKindMode::*;
-        match mode {
-            All => match self {
-                Fold => Call,
-                Call => Raise,
-                Raise => Fold,
-            },
-            NoFolding => match self {
-                Fold => Call,
-                Call => Raise,
-                Raise => Call,
-            },
-            AllIn => Call,
-        }
-    }
-
-    pub fn next_down(self, mode: AllowedKindMode) -> Self {
-        use ActionKind::*;
-        use AllowedKindMode::*;
-        match mode {
-            All => match self {
-                Fold => Raise,
-                Call => Fold,
-                Raise => Call,
-            },
-            NoFolding => match self {
-                Fold => Raise,
-                Call => Raise,
-                Raise => Call,
-            },
-            AllIn => Call,
         }
     }
 }
@@ -660,7 +588,7 @@ pub fn update_and_render(
                 // TODO confirm this looks okay with the maximum number of amounts
                 // which would be some function of MAX_PLAYERS. Exactly MAX_PLAYERS?
             }
-/*
+
             if $bundle.selection.bet < minimum_raise_total {
                 $bundle.selection.bet = minimum_raise_total;
             }
@@ -677,88 +605,37 @@ pub fn update_and_render(
                 (false, Some(_personality)) => {
                     // TODO Base choice of action off of personality
 
-                    let hand = hands.get(current)
+                    let hand = hands.get(current_i)
                                 .map(|&h| h)
                                 .unwrap_or_default();
 
-                    let mut action = match $community_opt {
-                        None => {
-                            let probability = hand_win_probability(hand);
-                            if probability >= SEVENTY_FIVE_PERCENT {
-                                let multiple = MoneyInner::from(xs::range(rng, 3..6));
-                                Action::Raise(minimum_raise_total + state.table.seats.large_blind_amount.get().saturating_mul(multiple))
-                            } else if probability >= FIFTY_PERCENT {
-                                if xs::range(rng, 0..5) == 0 {
-                                    // Don't be perfectly predictable!
-                                    gen_action(
-                                        rng,
-                                        ActionSpec {
-                                            one_past_max_money: NonZeroMoneyInner::MIN
-                                                .saturating_add(
-                                                    state.table.seats.moneys[current_i]
-                                                    .as_inner()
-                                                ),
-                                            min_money_unit: MIN_MONEY_UNIT,
-                                            minimum_raise_total,
-                                        }
-                                    )
-                                } else {
-                                    Action::Call
+                    let probability = hand_win_probability(hand);
+                    let mut action = if probability >= SEVENTY_FIVE_PERCENT {
+                        let multiple = MoneyInner::from(xs::range(rng, 6..12));
+                        Action::Raise(
+                            minimum_raise_total 
+                            + state.table.seats.ante.get().saturating_mul(multiple)
+                        )
+                    } else if probability >= FIFTY_PERCENT {
+                        if xs::range(rng, 0..5) == 0 {
+                            // Don't be perfectly predictable!
+                            gen_action(
+                                rng,
+                                ActionSpec {
+                                    one_past_max_money: NonZeroMoneyInner::MIN
+                                        .saturating_add(
+                                            state.table.seats.moneys[current_i]
+                                            .as_inner()
+                                        ),
+                                    min_money_unit: MIN_MONEY_UNIT,
+                                    minimum_raise_total,
                                 }
-                            } else {
-                                Action::Fold
-                            }
-                        },
-                        Some(community_cards) => {
-                            let own_eval = evaluate::holdem_hand(
-                                community_cards,
-                                hand,
-                            );
-
-                            let other_hands = ALL_SORTED_HANDS.iter()
-                                .filter(|h| {
-                                    let is_already_used =
-                                    h[0] == hand[0]
-                                    || h[0] == hand[1]
-                                    || h[1] == hand[0]
-                                    || h[1] == hand[1]
-                                    || community_cards.contains(h[0])
-                                    || community_cards.contains(h[1]);
-
-                                    !is_already_used
-                                });
-
-                            let mut below_count = 0;
-                            let mut equal_count = 0;
-                            let mut above_count = 0;
-
-                            for other_hand in other_hands {
-                                use core::cmp::Ordering::*;
-                                let other_eval = evaluate::holdem_hand(
-                                    community_cards,
-                                    *other_hand,
-                                );
-
-                                match own_eval.cmp(&other_eval) {
-                                    Less => {
-                                        below_count += 1;
-                                    },
-                                    Equal => {
-                                        equal_count += 1;
-                                    },
-                                    Greater => {
-                                        above_count += 1;
-                                    },
-                                }
-                            }
-
-                            if below_count > (equal_count + above_count) {
-                                // TODO raise sometimes
-                                Action::Call
-                            } else {
-                                Action::Fold
-                            }
+                            )
+                        } else {
+                            Action::Call
                         }
+                    } else {
+                        Action::Fold
                     };
 
                     match action {
@@ -961,7 +838,11 @@ pub fn update_and_render(
                     }
                 }
             };
-*/
+
+            if let Some(a) = action_opt {
+                dbg!(a);
+            }
+
             RoundOutcome::Undetermined
         })
     }
