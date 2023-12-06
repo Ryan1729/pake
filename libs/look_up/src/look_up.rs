@@ -51,11 +51,11 @@ pub mod holdem {
     }
 
     pub const SUITED_WIN_PROBABILITY_LEN: usize = 312;
-    pub const SUITED_WIN_PROBABILITY: [Probability; SUITED_WIN_PROBABILITY_LEN] = 
+    pub const SUITED_WIN_PROBABILITY: [Probability; SUITED_WIN_PROBABILITY_LEN] =
         include!("suited_holdem_win_probability.in");
 
     pub const UNSUITED_WIN_PROBABILITY_LEN: usize = 1014;
-    pub const UNSUITED_WIN_PROBABILITY: [Probability; UNSUITED_WIN_PROBABILITY_LEN] = 
+    pub const UNSUITED_WIN_PROBABILITY: [Probability; UNSUITED_WIN_PROBABILITY_LEN] =
         include!("unsuited_holdem_win_probability.in");
 
     pub fn hand_win_probability(hand: Hand) -> Probability {
@@ -105,7 +105,24 @@ pub mod five_card {
     // to produce a reasonable probability without a static array!
 
     pub fn hand_win_probability(hand: [Card; 5]) -> Probability {
-        todo!("{hand:?}")
+        // TODO evaluate this metric against some outside metric to check its
+        // validity.
+        type Sum = u16;
+        let mut sum: Sum = 0;
+        let mut count: Sum = 0;
+
+        for i0 in 0..5 {
+            for i1 in (i0 + 1)..5 {
+                sum += Sum::from(super::holdem::hand_win_probability([
+                    hand[i0],
+                    hand[i1],
+                ]));
+                count += 1;
+            }
+        }
+
+        Probability::try_from(sum / count)
+            .unwrap_or(probability::ONE)
     }
 }
 
