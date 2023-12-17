@@ -653,7 +653,7 @@ pub fn update_and_render(
             }
 
             // TODO extract out a version of this that doesn't depend on hold'em
-            // specific stuff or has that passed in, so we can sue it for Five 
+            // specific stuff or has that passed in, so we can use it for Five 
             // Card Draw and more games later. Might make sense to make a skeleton
             // for a third example as wel
 

@@ -2,7 +2,7 @@ use look_up::{
     five_card::{hand_win_probability},
 };
 use gfx::{card, pre_nul_len, Commands, SPACING_W, SPACING_H};
-use models::{Action, ActionKind, ActionSpec, AllowedKindMode, Card, CardBitset, ALL_CARDS, INITIAL_ANTE_AMOUNT, MIN_MONEY_UNIT, Deck, Money, MoneyInner, MoneyMove, NonZeroMoney, NonZeroMoneyInner, Pot, PotAction, Rank, gen_action, gen_deck, get_rank, ranks};
+use models::{Action, ActionKind, ActionSpec, AllowedKindMode, Card, CardBitset, RoundOutcome, ALL_CARDS, INITIAL_ANTE_AMOUNT, MIN_MONEY_UNIT, Deck, Money, MoneyInner, MoneyMove, NonZeroMoney, NonZeroMoneyInner, Pot, PotAction, Rank, gen_action, gen_deck, get_rank, ranks};
 use platform_types::{Button, Dir, Input, PaletteIndex, Speaker, SFX, command, unscaled, TEXT};
 use probability::{EvalCount};
 use probability::{FIFTY_PERCENT, SEVENTY_FIVE_PERCENT, EIGHTY_SEVEN_POINT_FIVE_PERCENT, Probability};
@@ -331,12 +331,6 @@ pub fn update_and_render(
     }
 
     let mut cmd = ModeCmd::NoOp;
-
-    #[derive(Copy, Clone, Debug, PartialEq, Eq)]
-    pub enum RoundOutcome {
-        Undetermined,
-        AdvanceToNext,
-    }
 
     macro_rules! do_five_card_draw {
         ($group: ident $(,)? $bundle: ident) => ({
@@ -839,11 +833,86 @@ pub fn update_and_render(
                 }
             };
 
-            if let Some(a) = action_opt {
-                dbg!(a);
-            }
+            if let Some(action) = action_opt {
+                let bet = match action {
+                    Action::Fold => PotAction::Fold,
+                    Action::Call => {
+                        match call_leftover {
+                            Some(new_amount) => {
+                                PotAction::Bet(
+                                    state.table.seats.moneys[current_i]
+                                        .take_all_but(new_amount)
+                                )
+                            },
+                            None => {
+                                PotAction::Bet(
+                                    state.table.seats.moneys[current_i].take_all()
+                                )
+                            }
+                        }
+                    },
+                    Action::Raise(raise_amount) => {
+                        // The total bet needed to call
+                        let call_amount = pot.call_amount();
 
-            RoundOutcome::Undetermined
+                        // The amount extra needed to call
+                        let call_remainder = call_amount.saturating_sub(
+                            pot.amount_for(current)
+                        );
+                        // The amount that would be leftover if the player was to call
+                        let call_leftover = state.table.seats.moneys[current_i]
+                            .as_inner()
+                            .checked_sub(call_remainder);
+
+                        match call_leftover {
+                            Some(_) => {
+                                match
+                                    state.table.seats.moneys[current_i]
+                                    .as_inner()
+                                    .checked_sub(raise_amount)
+                                {
+                                    Some(new_amount) => {
+                                        PotAction::Bet(
+                                            state.table.seats.moneys[current_i]
+                                                .take_all_but(new_amount)
+                                        )
+                                    },
+                                    None => {
+                                        debug_assert!(
+                                            false,
+                                            "player {} raised {} with only {}",
+                                            $bundle.current,
+                                            raise_amount,
+                                            state.table.seats.moneys[current_i],
+                                        );
+                                        PotAction::Bet(
+                                            state.table.seats.moneys[current_i]
+                                            .take_all()
+                                        )
+                                    }
+                                }
+                            },
+                            None => {
+                                PotAction::Bet(
+                                    state.table.seats.moneys[current_i]
+                                    .take_all()
+                                )
+                            }
+                        }
+                    },
+                };
+
+                pot.push_bet($bundle.current, bet);
+
+                $bundle.current += 1;
+                if $bundle.current >= player_count.u8() {
+                    $bundle.current = 0;
+                }
+
+                pot.round_outcome(&state.table.seats.moneys)
+            } else {
+                RoundOutcome::Undetermined
+            }
         })
     }
 
@@ -1119,6 +1188,9 @@ pub fn update_and_render(
                 RoundOutcome::AdvanceToNext => {
                     todo!("AdvanceToNext from FirstRound");
                 },
+                RoundOutcome::AwardNow(_) => {
+                    todo!("AwardNow(_) from FirstRound");
+                },
             }
         }
         Drawing {
@@ -1131,6 +1203,9 @@ pub fn update_and_render(
                 RoundOutcome::Undetermined => {},
                 RoundOutcome::AdvanceToNext => {
                     todo!("AdvanceToNext from Drawing");
+                },
+                RoundOutcome::AwardNow(_) => {
+                    todo!("AwardNow(_) from Drawing");
                 },
             }
         }
@@ -1145,6 +1220,9 @@ pub fn update_and_render(
                 RoundOutcome::AdvanceToNext => {
                     todo!("AdvanceToNext from SecondRound");
                 },
+                RoundOutcome::AwardNow(_) => {
+                    todo!("AwardNow(_) from SecondRound");
+                },
             }
         }
         Showdown {
@@ -1157,6 +1235,9 @@ pub fn update_and_render(
                 RoundOutcome::Undetermined => {},
                 RoundOutcome::AdvanceToNext => {
                     todo!("AdvanceToNext from Showdown");
+                },
+                RoundOutcome::AwardNow(_) => {
+                    todo!("AwardNow(_) from Showdown");
                 },
             }
         }
