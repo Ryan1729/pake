@@ -908,8 +908,8 @@ pub fn update_and_render(
                 if $bundle.current >= player_count.u8() {
                     $bundle.current = 0;
                 }
-
-                pot.round_outcome(&state.table.seats.moneys)
+dbg!(&state.table.seats.moneys);
+                dbg!(pot.round_outcome(&state.table.seats.moneys))
             } else {
                 RoundOutcome::Undetermined
             }
@@ -1186,6 +1186,7 @@ pub fn update_and_render(
             match outcome {
                 RoundOutcome::Undetermined => {},
                 RoundOutcome::AdvanceToNext => {
+                    // TODO why does this happen before the player can interact?
                     todo!("AdvanceToNext from FirstRound");
                 },
                 RoundOutcome::AwardNow(_) => {

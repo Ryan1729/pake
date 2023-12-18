@@ -771,6 +771,7 @@ mod pot {
             }
 
             let amounts = self.amounts();
+
             let mut previous_amount = None;
             for i in 0..amounts.len() {
                 // A player is all in or not playing, if they have 0 money left.
@@ -787,19 +788,28 @@ mod pot {
 
                 if let Some(previous) = previous_amount {
                     if previous != amounts[i] {
+// This previous_amount calculation was designed for Texas hold'em where it
+// works due to the blinds. Five card draw doesn't have those so we end up 
+// with AdvacneToNext where Undetermined is expected.
+// 
+// The plant is to evaluate whether there are tests that constraint the 
+// implementtation to work on Texs hold'em by running them with this panic
+// in place. If thispanic is not hit, we are sure that there are not, and 
+// that they need to be written. If it is, we can check only those tests,
+// and decide if they are good enough
+panic!("test testing panic");
                         return Undetermined;
                     }
                 } else {
                     previous_amount = Some(amounts[i]);
                 }
             }
-
+dbg!(previous_amount);
             let call_amount = self.call_amount();
             let is_complete = previous_amount
                 .map(|amount| amount >= call_amount)
                 // If everyone is all-in, then the round is done.
                 .unwrap_or(true);
-
             if is_complete {
                 // TODO? avoid this seemingly extra loop?
                 let mut unfolded_count = 0;
@@ -1046,7 +1056,7 @@ mod pot {
 
                 let mut pot = Pot::default();
 
-                let mut moneys = [0; MAX_PLAYERS as usize];
+                let mut moneys = [0; OVERALL_MAX_PLAYER_COUNT as usize];
 
                 for (i, spec) in specs.into_iter().enumerate() {
                     pot.push_bet(
@@ -1118,11 +1128,11 @@ mod pot {
 
                 let mut pot = Pot::default();
 
-                let mut moneys = [0; MAX_PLAYERS as usize];
+                let mut moneys = [0; OVERALL_MAX_PLAYER_COUNT as usize];
 
                 for (i, spec) in specs.into_iter().enumerate() {
                     pot.push_bet(
-                        HandIndex::try_from(i).unwrap(),
+                        PlayerIndex::try_from(i).unwrap(),
                         spec.action,
                     );
 
@@ -1199,11 +1209,11 @@ mod pot {
 
                 let mut pot = Pot::default();
 
-                let mut moneys = [0; MAX_PLAYERS as usize];
+                let mut moneys = [0; OVERALL_MAX_PLAYER_COUNT as usize];
 
                 for (i, spec) in specs.into_iter().enumerate() {
                     pot.push_bet(
-                        HandIndex::try_from(i).unwrap(),
+                        PlayerIndex::try_from(i).unwrap(),
                         spec.action,
                     );
 
