@@ -734,9 +734,41 @@ mod pot {
 
             output
         }
+    }
 
-        pub fn push_bet(&mut self, index: PlayerIndex, bet: PotAction) {
-            self.has_gone_this_round.set(index);
+    #[derive(Copy, Clone, Debug, Default, Eq, PartialEq)]
+    pub enum BetKind {
+        #[default]
+        Bet,
+        Ante,
+    }
+
+    impl Pot {
+        pub fn push_bet(
+            &mut self,
+            index: PlayerIndex,
+            bet: PotAction
+        ) {
+            self.push_bet_of_kind(
+                index,
+                bet,
+                BetKind::default()
+            );
+        }
+
+        pub fn push_bet_of_kind(
+            &mut self,
+            index: PlayerIndex,
+            bet: PotAction,
+            kind: BetKind
+        ) {
+            match kind {
+                BetKind::Bet => {
+                    self.has_gone_this_round.set(index);
+                },
+                // Adding an ante doesn't count as going for a round.
+                BetKind::Ante => {},
+            }
             self.actions[usize::from(index)].push(bet);
         }
 
@@ -769,7 +801,7 @@ mod pot {
                 // Rounds aren't complete until everyone has had a chance to move.
                 return Undetermined;
             }
-
+//make ante a property of the pot and subtract that from current money when checking if bet?
             let amounts = self.amounts();
 
             let mut previous_amount = None;
@@ -788,23 +820,13 @@ mod pot {
 
                 if let Some(previous) = previous_amount {
                     if previous != amounts[i] {
-// This previous_amount calculation was designed for Texas hold'em where it
-// works due to the blinds. Five card draw doesn't have those so we end up 
-// with AdvacneToNext where Undetermined is expected.
-// 
-// The plant is to evaluate whether there are tests that constraint the 
-// implementtation to work on Texs hold'em by running them with this panic
-// in place. If thispanic is not hit, we are sure that there are not, and 
-// that they need to be written. If it is, we can check only those tests,
-// and decide if they are good enough
-panic!("test testing panic");
                         return Undetermined;
                     }
                 } else {
                     previous_amount = Some(amounts[i]);
                 }
             }
-dbg!(previous_amount);
+
             let call_amount = self.call_amount();
             let is_complete = previous_amount
                 .map(|amount| amount >= call_amount)
@@ -1169,19 +1191,29 @@ dbg!(previous_amount);
     }
 
     #[cfg(test)]
-    mod is_round_complete_works {
+    mod round_outcome_works {
         use super::{*, RoundOutcome::*};
 
         #[derive(Debug)]
         struct Spec {
             action: PotAction,
             is_all_in: bool,
+            bet_kind: BetKind,
         }
 
         fn bet(bet: MoneyInner) -> Spec {
             Spec {
                 action: PotAction::Bet(test_money_inner_to_money(bet)),
                 is_all_in: false,
+                bet_kind: BetKind::Bet,
+            }
+        }
+
+        fn ante(bet: MoneyInner) -> Spec {
+            Spec {
+                action: PotAction::Bet(test_money_inner_to_money(bet)),
+                is_all_in: false,
+                bet_kind: BetKind::Ante,
             }
         }
 
@@ -1189,6 +1221,7 @@ dbg!(previous_amount);
             Spec {
                 action: PotAction::Bet(test_money_inner_to_money(bet)),
                 is_all_in: true,
+                bet_kind: BetKind::Bet,
             }
         }
 
@@ -1196,6 +1229,7 @@ dbg!(previous_amount);
             Spec {
                 action: PotAction::Fold,
                 is_all_in: false,
+                bet_kind: BetKind::default(),
             }
         }
 
@@ -1212,9 +1246,10 @@ dbg!(previous_amount);
                 let mut moneys = [0; OVERALL_MAX_PLAYER_COUNT as usize];
 
                 for (i, spec) in specs.into_iter().enumerate() {
-                    pot.push_bet(
+                    pot.push_bet_of_kind(
                         PlayerIndex::try_from(i).unwrap(),
                         spec.action,
+                        spec.bet_kind,
                     );
 
                     moneys[i] = if spec.is_all_in {
@@ -1248,11 +1283,15 @@ dbg!(previous_amount);
             a!([all_in(300), fold(), fold()], AwardNow(0));
             a!([fold(), all_in(300), fold()], AwardNow(1));
             a!([fold(), fold(), all_in(300)], AwardNow(2));
+
+            a!([bet(5), bet(5)], AdvanceToNext);
+            a!([ante(5), ante(5)], Undetermined);
+            a!([ante(5), bet(5)], Undetermined);
         }
     }
 }
 
-pub use pot::{Pot, PotAction, RoundOutcome};
+pub use pot::{BetKind, Pot, PotAction, RoundOutcome};
 
 pub mod holdem {
     use super::*;

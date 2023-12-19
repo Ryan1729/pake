@@ -2,7 +2,7 @@ use look_up::{
     five_card::{hand_win_probability},
 };
 use gfx::{card, pre_nul_len, Commands, SPACING_W, SPACING_H};
-use models::{Action, ActionKind, ActionSpec, AllowedKindMode, Card, CardBitset, RoundOutcome, ALL_CARDS, INITIAL_ANTE_AMOUNT, MIN_MONEY_UNIT, Deck, Money, MoneyInner, MoneyMove, NonZeroMoney, NonZeroMoneyInner, Pot, PotAction, Rank, gen_action, gen_deck, get_rank, ranks};
+use models::{Action, ActionKind, ActionSpec, AllowedKindMode, BetKind, Card, CardBitset, RoundOutcome, ALL_CARDS, INITIAL_ANTE_AMOUNT, MIN_MONEY_UNIT, Deck, Money, MoneyInner, MoneyMove, NonZeroMoney, NonZeroMoneyInner, Pot, PotAction, Rank, gen_action, gen_deck, get_rank, ranks};
 use platform_types::{Button, Dir, Input, PaletteIndex, Speaker, SFX, command, unscaled, TEXT};
 use probability::{EvalCount};
 use probability::{FIFTY_PERCENT, SEVENTY_FIVE_PERCENT, EIGHTY_SEVEN_POINT_FIVE_PERCENT, Probability};
@@ -240,12 +240,13 @@ impl Table {
         let ante = MIN_MONEY_UNIT;
 
         for i in 0..player_count.u8() {
-            pot.push_bet(
+            pot.push_bet_of_kind(
                 i, 
                 PotAction::Bet(
                     moneys[usize::from(i)]
                         .take(ante.get())
-                )
+                ),
+                BetKind::Ante,
             );
         }
 
@@ -908,8 +909,8 @@ pub fn update_and_render(
                 if $bundle.current >= player_count.u8() {
                     $bundle.current = 0;
                 }
-dbg!(&state.table.seats.moneys);
-                dbg!(pot.round_outcome(&state.table.seats.moneys))
+
+                pot.round_outcome(&state.table.seats.moneys)
             } else {
                 RoundOutcome::Undetermined
             }
