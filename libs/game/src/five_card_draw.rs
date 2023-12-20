@@ -191,10 +191,16 @@ pub struct MenuSelection {
 pub struct StateBundle {
     pub deck: Deck,
     pub hands: Hands,
+    pub dealer: HandIndex,
     pub current: HandIndex,
     pub pot: Pot,
     pub player_count: PlayerCount,
     pub selection: MenuSelection,
+}
+
+#[derive(Clone, Default)]
+pub struct DrawingState {
+    // TODO track when to stop, drawing specific UI state etc. here.
 }
 
 #[derive(Clone)]
@@ -205,6 +211,7 @@ pub enum TableState {
     },
     Drawing {
         bundle: StateBundle,
+        drawing_state: DrawingState,
     },
     SecondRound {
         bundle: StateBundle,
@@ -263,7 +270,7 @@ impl Table {
 
         let selected = gen_hand_index(rng, player_count);
 
-        let current = if moneys[usize::from(selected)] == 0 {
+        let dealer = if moneys[usize::from(selected)] == 0 {
             let mut index = selected + 1;
             while {
                 if index >= player_count.u8() {
@@ -281,6 +288,12 @@ impl Table {
             selected
         };
 
+        let current = if dealer + 1 >= player_count.u8() {
+            0
+        } else {
+            dealer + 1
+        };
+
         // TODO handle case where the pot has all the money in it!
         Self {
             seats: Seats {
@@ -293,6 +306,7 @@ impl Table {
                 bundle: StateBundle {
                     deck,
                     hands,
+                    dealer,
                     current,
                     pot,
                     player_count,
@@ -919,64 +933,43 @@ pub fn update_and_render(
 
     macro_rules! next_bundle {
         ($bundle: ident =
+            $hands: expr,
             $deck: expr,
-            $current: expr,
+            $dealer: expr,
             $player_count: expr,
             $pot: expr
         ) => {
+            let hands = $hands;
             let mut deck = $deck;
-            let previous_index = $current;
+            let dealer = $dealer;
             let player_count = $player_count;
+            let mut pot = $pot;
 
+            pot.reset_for_new_round();
+    
+            // TODO Add options for selecting the next player to go in 
+            // different wys since apparently multiple options are in use.
+            // * Dealer's left always
+            // * Last aggresive player (Last to raise)
+            // * The player who opened the betting on the first round
+            //     Could call this first aggresive player
             let current = {
-                let mut index = previous_index + 1;
-                while {
-                    if index >= player_count.u8() {
-                        index = 0;
-                    }
-
-                    index != previous_index
-                    && state.table.seats.moneys[usize::from(index)] == 0
-                } {
-                    index += 1;
+                let mut index = dealer + 1;
+                if index >= player_count.u8() {
+                    index = 0;
                 }
-
                 index
-            };
-
-            let (posts, deck) = if let (Some(card1), Some(card2)) = (deck.draw(), deck.draw()) {
-                ([card1, card2], deck)
-            } else {
-                deal(rng)
             };
 
             let mut $bundle = StateBundle {
                 deck,
-                posts,
+                hands,
+                dealer,
                 current,
-                pot: $pot.take_all(),
+                pot: $pot,
                 player_count,
-                selection: MenuSelection::default(),
-                round: Round::AfterOne,
+                selection: <_>::default(),
             };
-
-            let pot_has_all_the_money: bool = 
-                state.table.seats.moneys.iter()
-                    .all(|m| m.as_inner() == 0);
-
-            if pot_has_all_the_money {
-                // This is traditionally played against "the house", so there all the
-                // money collecting there is a feature, not a bug.
-                // Maybe we'll make that matter later, but for now it's just a 
-                // disappointing outcome, so split up the money in case this is 
-                // dealer's choice, and go back.
-                $bundle.pot.split_among(
-                    &mut state.table.seats.moneys[..],
-                    usize::from(previous_index)
-                );
-
-                cmd = ModeCmd::BackToTitleScreen;
-            }
         }
     }
 
@@ -1187,8 +1180,19 @@ pub fn update_and_render(
             match outcome {
                 RoundOutcome::Undetermined => {},
                 RoundOutcome::AdvanceToNext => {
-                    // TODO why does this happen before the player can interact?
-                    todo!("AdvanceToNext from FirstRound");
+                    next_bundle!(
+                        new_bundle =
+                            bundle.hands.clone(),
+                            bundle.deck.clone(),
+                            bundle.current,
+                            bundle.player_count,
+                            bundle.pot.clone()
+                    );
+                    speaker.request_sfx(SFX::CardPlace);
+                    state.table.state = Drawing {
+                        bundle: new_bundle,
+                        drawing_state: <_>::default()
+                    };
                 },
                 RoundOutcome::AwardNow(_) => {
                     todo!("AwardNow(_) from FirstRound");
@@ -1197,6 +1201,7 @@ pub fn update_and_render(
         }
         Drawing {
             bundle,
+            drawing_state: _,
         } => {
             let group = new_group!();
             let outcome = do_five_card_draw!(group, bundle);
