@@ -198,9 +198,22 @@ pub struct StateBundle {
     pub selection: MenuSelection,
 }
 
-#[derive(Clone, Default)]
+#[derive(Clone, Debug)]
 pub struct DrawingState {
+    current: Option<HandIndex>,
     // TODO track when to stop, drawing specific UI state etc. here.
+}
+
+impl DrawingState {
+    fn new(current: HandIndex) -> Self {
+        Self {
+            current: Some(current),
+        }
+    }
+
+    fn animations_done(&self) -> bool {
+        false
+    }
 }
 
 #[derive(Clone)]
@@ -348,13 +361,14 @@ pub fn update_and_render(
     let mut cmd = ModeCmd::NoOp;
 
     macro_rules! do_five_card_draw {
-        ($group: ident $(,)? $bundle: ident) => ({
+        ($group: ident $(,)? $bundle: ident, $drawing_state_opt: expr) => ({
             let group = $group;
             let hands = &$bundle.hands;
             let current = $bundle.current;
             let current_i = usize::from(current);
             let player_count = $bundle.player_count;
             let pot = &mut $bundle.pot;
+            let drawing_state_opt: Option<&mut DrawingState> = $drawing_state_opt;
 
             use platform_types::unscaled::xy;
             // TODO Avoid overlapping hands
@@ -486,6 +500,33 @@ pub fn update_and_render(
                 h: HAND_DESC_H,
             };
 
+            const POT_BASE_X: unscaled::X = unscaled::X(150);
+            const POT_BASE_Y: unscaled::Y = unscaled::Y(225);
+
+            {
+                let mut y = POT_BASE_Y;
+                for amount in pot.individual_pots(&state.table.seats.moneys) {
+                    stack_money_text!(main_pot_text = amount);
+
+                    group.commands.print_chars(
+                        &main_pot_text,
+                        POT_BASE_X - pre_nul_len(&main_pot_text) * gfx::CHAR_ADVANCE,
+                        y,
+                        TEXT
+                    );
+
+                    y += gfx::CHAR_LINE_ADVANCE;
+                }
+
+                // TODO confirm this looks okay with the maximum number of amounts
+                // which would be some function of MAX_PLAYERS. Exactly MAX_PLAYERS?
+            }
+
+            const ACTION_KIND: ui::FiveCardDrawMenuId = 0;
+            const MONEY_AMOUNT: ui::FiveCardDrawMenuId = 1;
+            const SUBMIT: ui::FiveCardDrawMenuId = 2;
+            const MENU_KIND_ONE_PAST_MAX: ui::FiveCardDrawMenuId = 3;
+
             // The total bet needed to call
             let call_amount = pot.call_amount();
             let minimum_raise_total = call_amount + MIN_MONEY_UNIT.get();
@@ -506,11 +547,6 @@ pub fn update_and_render(
                 } else {
                     AllowedKindMode::AllIn
                 };
-
-            const ACTION_KIND: ui::FiveCardDrawMenuId = 0;
-            const MONEY_AMOUNT: ui::FiveCardDrawMenuId = 1;
-            const SUBMIT: ui::FiveCardDrawMenuId = 2;
-            const MENU_KIND_ONE_PAST_MAX: ui::FiveCardDrawMenuId = 3;
 
             let mut i = 0;
             for _ in 0..hands_len {
@@ -572,32 +608,6 @@ pub fn update_and_render(
                 i += 1;
             }
 
-            if let Zero = group.ctx.hot {
-                group.ctx.set_next_hot(FiveCardDrawHand(0));
-            }
-
-            const POT_BASE_X: unscaled::X = unscaled::X(150);
-            const POT_BASE_Y: unscaled::Y = unscaled::Y(225);
-
-            {
-                let mut y = POT_BASE_Y;
-                for amount in pot.individual_pots(&state.table.seats.moneys) {
-                    stack_money_text!(main_pot_text = amount);
-
-                    group.commands.print_chars(
-                        &main_pot_text,
-                        POT_BASE_X - pre_nul_len(&main_pot_text) * gfx::CHAR_ADVANCE,
-                        y,
-                        TEXT
-                    );
-
-                    y += gfx::CHAR_LINE_ADVANCE;
-                }
-
-                // TODO confirm this looks okay with the maximum number of amounts
-                // which would be some function of MAX_PLAYERS. Exactly MAX_PLAYERS?
-            }
-
             if $bundle.selection.bet < minimum_raise_total {
                 $bundle.selection.bet = minimum_raise_total;
             }
@@ -606,327 +616,373 @@ pub fn update_and_render(
                     .as_inner();
             }
 
-            let action_opt = match (
-                pot.has_folded(current),
-                &state.table.seats.personalities[current_i]
-            ) {
-                (true, _) => Some(Action::Fold),
-                (false, Some(_personality)) => {
-                    // TODO Base choice of action off of personality
+            if let Some(drawing_state) = drawing_state_opt {
+                // We assume that `drawing_state.current` was set before
+                // transitioning to the Drawing state. Therefore,
+                // None indicates we looped through all of them already.
+                if drawing_state.current == None
+                && drawing_state.animations_done() {
+                    RoundOutcome::AdvanceToNext
+                } else {
+                    // TODO
+                    //drawing_state.render(group);
+                    //drawing_state.advance_animations();
 
-                    let hand = hands.get(current_i)
-                                .map(|&h| h)
-                                .unwrap_or_default();
-
-                    let probability = hand_win_probability(hand);
-                    let mut action = if probability >= SEVENTY_FIVE_PERCENT {
-                        let multiple = MoneyInner::from(xs::range(rng, 6..12));
-                        Action::Raise(
-                            minimum_raise_total 
-                            + state.table.seats.ante.get().saturating_mul(multiple)
-                        )
-                    } else if probability >= FIFTY_PERCENT {
-                        if xs::range(rng, 0..5) == 0 {
-                            // Don't be perfectly predictable!
-                            gen_action(
-                                rng,
-                                ActionSpec {
-                                    one_past_max_money: NonZeroMoneyInner::MIN
-                                        .saturating_add(
-                                            state.table.seats.moneys[current_i]
-                                            .as_inner()
-                                        ),
-                                    min_money_unit: MIN_MONEY_UNIT,
-                                    minimum_raise_total,
+                    if drawing_state.animations_done() {
+                        // Advance `drawing_state.current` to next or set to 
+                        // None if we have looped.
+                        // (If this is tricky, feel free to make a like
+                        // enum DrawingIndex {
+                        //     NotSetYet,
+                        //     At(PlayerIndex),
+                        //     Done,
+                        // }
+                        // )
+                        drawing_state.current = match drawing_state.current {
+                            Some(c) => {
+                                let mut next_index = c + 1;
+                                if next_index >= player_count.u8() {
+                                    next_index = 0;
                                 }
-                            )
-                        } else {
-                            Action::Call
-                        }
-                    } else {
-                        Action::Fold
-                    };
-
-                    match action {
-                        Action::Fold => {
-                            if call_remainder == 0 {
-                                action = Action::Call;
-                            }
-                        },
-                        Action::Call => {},
-                        Action::Raise(raise_amount) => {
-                            let inner = state.table.seats.moneys[current_i]
-                                .as_inner();
-                            if inner
-                                .checked_sub(raise_amount)
-                                .is_none() {
-                                action = Action::Raise(inner);
-                            }
-                        },
+                                if next_index == current {
+                                    None
+                                } else {
+                                    Some(next_index)
+                                }
+                            },
+                            None => None,
+                        };
                     }
 
-                    Some(action)
-                },
-                (false, None) => {
-                    match group.ctx.hot {
-                        FiveCardDrawMenu(menu_id) => {
-                            stack_money_text!(money_text = state.table.seats.moneys[current_i]);
+                    RoundOutcome::Undetermined
+                }
+            } else {
+                if let Zero = group.ctx.hot {
+                    group.ctx.set_next_hot(FiveCardDrawHand(0));
+                }
 
-                            group.commands.draw_nine_slice(
-                                gfx::NineSlice::Button,
-                                MENU_RECT
-                            );
-
-                            {
-                                let x = MENU_RECT.x + SPACING_W;
-                                let mut y = MENU_RECT.y + SPACING_H;
-                                group.commands.print_chars(
-                                    &money_text,
-                                    x,
-                                    y,
-                                    TEXT
-                                );
-                                y += gfx::CHAR_LINE_ADVANCE;
+                let action_opt = match (
+                    pot.has_folded(current),
+                    &state.table.seats.personalities[current_i]
+                ) {
+                    (true, _) => Some(Action::Fold),
+                    (false, Some(_personality)) => {
+                        // TODO Base choice of action off of personality
+    
+                        let hand = hands.get(current_i)
+                                    .map(|&h| h)
+                                    .unwrap_or_default();
+    
+                        let probability = hand_win_probability(hand);
+                        let mut action = if probability >= SEVENTY_FIVE_PERCENT {
+                            let multiple = MoneyInner::from(xs::range(rng, 6..12));
+                            Action::Raise(
+                                minimum_raise_total 
+                                + state.table.seats.ante.get().saturating_mul(multiple)
+                            )
+                        } else if probability >= FIFTY_PERCENT {
+                            if xs::range(rng, 0..5) == 0 {
+                                // Don't be perfectly predictable!
+                                gen_action(
+                                    rng,
+                                    ActionSpec {
+                                        one_past_max_money: NonZeroMoneyInner::MIN
+                                            .saturating_add(
+                                                state.table.seats.moneys[current_i]
+                                                .as_inner()
+                                            ),
+                                        min_money_unit: MIN_MONEY_UNIT,
+                                        minimum_raise_total,
+                                    }
+                                )
+                            } else {
+                                Action::Call
                             }
-
-                            let player_action_opt = {
-                                let x = MENU_RECT.x + SPACING_W * 10;
-                                let y = MENU_RECT.y + SPACING_H;
-
-                                let action_kind_rect = unscaled::Rect {
-                                    x,
-                                    y,
-                                    w: unscaled::W(50),
-                                    h: MENU_RECT.h - SPACING_H * 2,
-                                };
-
-                                let action_kind_text = $bundle.selection.action_kind.text();
-
+                        } else {
+                            Action::Fold
+                        };
+    
+                        match action {
+                            Action::Fold => {
+                                if call_remainder == 0 {
+                                    action = Action::Call;
+                                }
+                            },
+                            Action::Call => {},
+                            Action::Raise(raise_amount) => {
+                                let inner = state.table.seats.moneys[current_i]
+                                    .as_inner();
+                                if inner
+                                    .checked_sub(raise_amount)
+                                    .is_none() {
+                                    action = Action::Raise(inner);
+                                }
+                            },
+                        }
+    
+                        Some(action)
+                    },
+                    (false, None) => {
+                        match group.ctx.hot {
+                            FiveCardDrawMenu(menu_id) => {
+                                stack_money_text!(money_text = state.table.seats.moneys[current_i]);
+    
+                                group.commands.draw_nine_slice(
+                                    gfx::NineSlice::Button,
+                                    MENU_RECT
+                                );
+    
                                 {
-                                    let xy = gfx::center_line_in_rect(
-                                        action_kind_text.len() as _,
-                                        action_kind_rect,
-                                    );
+                                    let x = MENU_RECT.x + SPACING_W;
+                                    let mut y = MENU_RECT.y + SPACING_H;
                                     group.commands.print_chars(
-                                        action_kind_text,
-                                        xy.x,
-                                        xy.y,
+                                        &money_text,
+                                        x,
+                                        y,
                                         TEXT
                                     );
+                                    y += gfx::CHAR_LINE_ADVANCE;
                                 }
-
-                                if allowed_kind_mode != AllowedKindMode::AllIn {
-                                    ui::draw_quick_select(
-                                        group,
-                                        action_kind_rect,
-                                        FiveCardDrawMenu(ACTION_KIND),
-                                    );
-                                } else {
-                                    group.ctx.set_next_hot(FiveCardDrawMenu(SUBMIT));
-                                }
-
-                                let money_rect = unscaled::Rect {
-                                    x: action_kind_rect.x + action_kind_rect.w,
-                                    ..action_kind_rect
-                                };
-
-                                match $bundle.selection.action_kind {
-                                    ActionKind::Raise => {
-                                        draw_money_in_rect!(group, $bundle.selection.bet, money_rect);
-
-                                        ui::draw_quick_select(
-                                            group,
-                                            money_rect,
-                                            FiveCardDrawMenu(MONEY_AMOUNT),
+    
+                                let player_action_opt = {
+                                    let x = MENU_RECT.x + SPACING_W * 10;
+                                    let y = MENU_RECT.y + SPACING_H;
+    
+                                    let action_kind_rect = unscaled::Rect {
+                                        x,
+                                        y,
+                                        w: unscaled::W(50),
+                                        h: MENU_RECT.h - SPACING_H * 2,
+                                    };
+    
+                                    let action_kind_text = $bundle.selection.action_kind.text();
+    
+                                    {
+                                        let xy = gfx::center_line_in_rect(
+                                            action_kind_text.len() as _,
+                                            action_kind_rect,
+                                        );
+                                        group.commands.print_chars(
+                                            action_kind_text,
+                                            xy.x,
+                                            xy.y,
+                                            TEXT
                                         );
                                     }
-                                    ActionKind::Call => {
-                                        match allowed_kind_mode {
-                                            AllowedKindMode::All
-                                            | AllowedKindMode::NoFolding => {
-                                                draw_money_in_rect!(group, call_remainder, money_rect);
-                                            },
-                                            AllowedKindMode::AllIn => {
-                                                let label = b"all-in";
-                                                let xy = gfx::center_line_in_rect(
-                                                    label.len() as _,
-                                                    money_rect,
-                                                );
-                                                group.commands.print_chars(
-                                                    label,
-                                                    xy.x,
-                                                    xy.y,
-                                                    6
-                                                );
+    
+                                    if allowed_kind_mode != AllowedKindMode::AllIn {
+                                        ui::draw_quick_select(
+                                            group,
+                                            action_kind_rect,
+                                            FiveCardDrawMenu(ACTION_KIND),
+                                        );
+                                    } else {
+                                        group.ctx.set_next_hot(FiveCardDrawMenu(SUBMIT));
+                                    }
+    
+                                    let money_rect = unscaled::Rect {
+                                        x: action_kind_rect.x + action_kind_rect.w,
+                                        ..action_kind_rect
+                                    };
+    
+                                    match $bundle.selection.action_kind {
+                                        ActionKind::Raise => {
+                                            draw_money_in_rect!(group, $bundle.selection.bet, money_rect);
+    
+                                            ui::draw_quick_select(
+                                                group,
+                                                money_rect,
+                                                FiveCardDrawMenu(MONEY_AMOUNT),
+                                            );
+                                        }
+                                        ActionKind::Call => {
+                                            match allowed_kind_mode {
+                                                AllowedKindMode::All
+                                                | AllowedKindMode::NoFolding => {
+                                                    draw_money_in_rect!(group, call_remainder, money_rect);
+                                                },
+                                                AllowedKindMode::AllIn => {
+                                                    let label = b"all-in";
+                                                    let xy = gfx::center_line_in_rect(
+                                                        label.len() as _,
+                                                        money_rect,
+                                                    );
+                                                    group.commands.print_chars(
+                                                        label,
+                                                        xy.x,
+                                                        xy.y,
+                                                        6
+                                                    );
+                                                }
                                             }
                                         }
+                                        ActionKind::Fold => {}
                                     }
-                                    ActionKind::Fold => {}
-                                }
-
-                                if do_button(
-                                    group,
-                                    ButtonSpec {
-                                        id: FiveCardDrawMenu(SUBMIT),
-                                        rect: unscaled::Rect {
-                                            x: action_kind_rect.x + action_kind_rect.w + action_kind_rect.w,
-                                            ..action_kind_rect
-                                        },
-                                        text: b"submit",
+    
+                                    if do_button(
+                                        group,
+                                        ButtonSpec {
+                                            id: FiveCardDrawMenu(SUBMIT),
+                                            rect: unscaled::Rect {
+                                                x: action_kind_rect.x + action_kind_rect.w + action_kind_rect.w,
+                                                ..action_kind_rect
+                                            },
+                                            text: b"submit",
+                                        }
+                                    ) {
+                                        Some(match $bundle.selection.action_kind {
+                                            ActionKind::Fold => Action::Fold,
+                                            ActionKind::Call => Action::Call,
+                                            ActionKind::Raise => Action::Raise($bundle.selection.bet),
+                                        })
+                                    } else {
+                                        None
                                     }
-                                ) {
-                                    Some(match $bundle.selection.action_kind {
-                                        ActionKind::Fold => Action::Fold,
-                                        ActionKind::Call => Action::Call,
-                                        ActionKind::Raise => Action::Raise($bundle.selection.bet),
-                                    })
-                                } else {
-                                    None
-                                }
-                            };
-
-                            if group.input.pressed_this_frame(Button::B) {
-                                group.ctx.set_next_hot(FiveCardDrawHand(current));
-                            } else if group.input.pressed_this_frame(Button::LEFT) {
-                                let mut new_id = menu_id;
-                                new_id = match new_id.checked_sub(1) {
-                                    Some(new_id) => new_id,
-                                    None => MENU_KIND_ONE_PAST_MAX - 1,
                                 };
-
-                                if new_id == MONEY_AMOUNT
-                                && $bundle.selection.action_kind != ActionKind::Raise {
+    
+                                if group.input.pressed_this_frame(Button::B) {
+                                    group.ctx.set_next_hot(FiveCardDrawHand(current));
+                                } else if group.input.pressed_this_frame(Button::LEFT) {
+                                    let mut new_id = menu_id;
                                     new_id = match new_id.checked_sub(1) {
                                         Some(new_id) => new_id,
                                         None => MENU_KIND_ONE_PAST_MAX - 1,
                                     };
-                                }
-
-                                group.ctx.set_next_hot(FiveCardDrawMenu(new_id));
-                            } else if group.input.pressed_this_frame(Button::RIGHT) {
-                                let mut new_id = menu_id;
-                                new_id += 1;
-                                if new_id >= MENU_KIND_ONE_PAST_MAX {
-                                    new_id = 0;
-                                }
-
-                                if new_id == MONEY_AMOUNT
-                                && $bundle.selection.action_kind != ActionKind::Raise {
+    
+                                    if new_id == MONEY_AMOUNT
+                                    && $bundle.selection.action_kind != ActionKind::Raise {
+                                        new_id = match new_id.checked_sub(1) {
+                                            Some(new_id) => new_id,
+                                            None => MENU_KIND_ONE_PAST_MAX - 1,
+                                        };
+                                    }
+    
+                                    group.ctx.set_next_hot(FiveCardDrawMenu(new_id));
+                                } else if group.input.pressed_this_frame(Button::RIGHT) {
+                                    let mut new_id = menu_id;
                                     new_id += 1;
                                     if new_id >= MENU_KIND_ONE_PAST_MAX {
                                         new_id = 0;
                                     }
-                                }
-
-                                group.ctx.set_next_hot(FiveCardDrawMenu(new_id));
-                            } else {
-                                match menu_id {
-                                    ACTION_KIND => {
-                                        if group.input.pressed_this_frame(Button::UP) {
-                                            $bundle.selection.action_kind = $bundle.selection.action_kind.next_up(allowed_kind_mode);
-                                        } else if group.input.pressed_this_frame(Button::DOWN) {
-                                            $bundle.selection.action_kind = $bundle.selection.action_kind.next_down(allowed_kind_mode);
+    
+                                    if new_id == MONEY_AMOUNT
+                                    && $bundle.selection.action_kind != ActionKind::Raise {
+                                        new_id += 1;
+                                        if new_id >= MENU_KIND_ONE_PAST_MAX {
+                                            new_id = 0;
                                         }
                                     }
-                                    MONEY_AMOUNT => {
-                                        if group.input.pressed_this_frame(Button::UP) {
-                                            $bundle.selection.bet = $bundle.selection.bet.saturating_add(MIN_MONEY_UNIT.get());
-                                        } else if group.input.pressed_this_frame(Button::DOWN) {
-                                            $bundle.selection.bet = $bundle.selection.bet.saturating_sub(MIN_MONEY_UNIT.get());
+    
+                                    group.ctx.set_next_hot(FiveCardDrawMenu(new_id));
+                                } else {
+                                    match menu_id {
+                                        ACTION_KIND => {
+                                            if group.input.pressed_this_frame(Button::UP) {
+                                                $bundle.selection.action_kind = $bundle.selection.action_kind.next_up(allowed_kind_mode);
+                                            } else if group.input.pressed_this_frame(Button::DOWN) {
+                                                $bundle.selection.action_kind = $bundle.selection.action_kind.next_down(allowed_kind_mode);
+                                            }
                                         }
+                                        MONEY_AMOUNT => {
+                                            if group.input.pressed_this_frame(Button::UP) {
+                                                $bundle.selection.bet = $bundle.selection.bet.saturating_add(MIN_MONEY_UNIT.get());
+                                            } else if group.input.pressed_this_frame(Button::DOWN) {
+                                                $bundle.selection.bet = $bundle.selection.bet.saturating_sub(MIN_MONEY_UNIT.get());
+                                            }
+                                        }
+                                        _ => {}
                                     }
-                                    _ => {}
                                 }
+    
+                                player_action_opt
                             }
-
-                            player_action_opt
-                        }
-                        _ => {
-                            None
+                            _ => {
+                                None
+                            }
                         }
                     }
-                }
-            };
-
-            if let Some(action) = action_opt {
-                let bet = match action {
-                    Action::Fold => PotAction::Fold,
-                    Action::Call => {
-                        match call_leftover {
-                            Some(new_amount) => {
-                                PotAction::Bet(
-                                    state.table.seats.moneys[current_i]
-                                        .take_all_but(new_amount)
-                                )
-                            },
-                            None => {
-                                PotAction::Bet(
-                                    state.table.seats.moneys[current_i].take_all()
-                                )
-                            }
-                        }
-                    },
-                    Action::Raise(raise_amount) => {
-                        // The total bet needed to call
-                        let call_amount = pot.call_amount();
-
-                        // The amount extra needed to call
-                        let call_remainder = call_amount.saturating_sub(
-                            pot.amount_for(current)
-                        );
-                        // The amount that would be leftover if the player was to call
-                        let call_leftover = state.table.seats.moneys[current_i]
-                            .as_inner()
-                            .checked_sub(call_remainder);
-
-                        match call_leftover {
-                            Some(_) => {
-                                match
-                                    state.table.seats.moneys[current_i]
-                                    .as_inner()
-                                    .checked_sub(raise_amount)
-                                {
-                                    Some(new_amount) => {
-                                        PotAction::Bet(
-                                            state.table.seats.moneys[current_i]
-                                                .take_all_but(new_amount)
-                                        )
-                                    },
-                                    None => {
-                                        debug_assert!(
-                                            false,
-                                            "player {} raised {} with only {}",
-                                            $bundle.current,
-                                            raise_amount,
-                                            state.table.seats.moneys[current_i],
-                                        );
-                                        PotAction::Bet(
-                                            state.table.seats.moneys[current_i]
-                                            .take_all()
-                                        )
-                                    }
-                                }
-                            },
-                            None => {
-                                PotAction::Bet(
-                                    state.table.seats.moneys[current_i]
-                                    .take_all()
-                                )
-                            }
-                        }
-                    },
                 };
-
-                pot.push_bet($bundle.current, bet);
-
-                $bundle.current += 1;
-                if $bundle.current >= player_count.u8() {
-                    $bundle.current = 0;
+    
+                if let Some(action) = action_opt {
+                    let bet = match action {
+                        Action::Fold => PotAction::Fold,
+                        Action::Call => {
+                            match call_leftover {
+                                Some(new_amount) => {
+                                    PotAction::Bet(
+                                        state.table.seats.moneys[current_i]
+                                            .take_all_but(new_amount)
+                                    )
+                                },
+                                None => {
+                                    PotAction::Bet(
+                                        state.table.seats.moneys[current_i].take_all()
+                                    )
+                                }
+                            }
+                        },
+                        Action::Raise(raise_amount) => {
+                            // The total bet needed to call
+                            let call_amount = pot.call_amount();
+    
+                            // The amount extra needed to call
+                            let call_remainder = call_amount.saturating_sub(
+                                pot.amount_for(current)
+                            );
+                            // The amount that would be leftover if the player was to call
+                            let call_leftover = state.table.seats.moneys[current_i]
+                                .as_inner()
+                                .checked_sub(call_remainder);
+    
+                            match call_leftover {
+                                Some(_) => {
+                                    match
+                                        state.table.seats.moneys[current_i]
+                                        .as_inner()
+                                        .checked_sub(raise_amount)
+                                    {
+                                        Some(new_amount) => {
+                                            PotAction::Bet(
+                                                state.table.seats.moneys[current_i]
+                                                    .take_all_but(new_amount)
+                                            )
+                                        },
+                                        None => {
+                                            debug_assert!(
+                                                false,
+                                                "player {} raised {} with only {}",
+                                                $bundle.current,
+                                                raise_amount,
+                                                state.table.seats.moneys[current_i],
+                                            );
+                                            PotAction::Bet(
+                                                state.table.seats.moneys[current_i]
+                                                .take_all()
+                                            )
+                                        }
+                                    }
+                                },
+                                None => {
+                                    PotAction::Bet(
+                                        state.table.seats.moneys[current_i]
+                                        .take_all()
+                                    )
+                                }
+                            }
+                        },
+                    };
+    
+                    pot.push_bet($bundle.current, bet);
+    
+                    $bundle.current += 1;
+                    if $bundle.current >= player_count.u8() {
+                        $bundle.current = 0;
+                    }
+    
+                    pot.round_outcome(&state.table.seats.moneys)
+                } else {
+                    RoundOutcome::Undetermined
                 }
-
-                pot.round_outcome(&state.table.seats.moneys)
-            } else {
-                RoundOutcome::Undetermined
             }
         })
     }
@@ -1175,7 +1231,7 @@ pub fn update_and_render(
             bundle,
         } => {
             let group = new_group!();
-            let outcome = do_five_card_draw!(group, bundle);
+            let outcome = do_five_card_draw!(group, bundle, None);
 
             match outcome {
                 RoundOutcome::Undetermined => {},
@@ -1190,8 +1246,8 @@ pub fn update_and_render(
                     );
                     speaker.request_sfx(SFX::CardPlace);
                     state.table.state = Drawing {
+                        drawing_state: DrawingState::new(new_bundle.current),
                         bundle: new_bundle,
-                        drawing_state: <_>::default()
                     };
                 },
                 RoundOutcome::AwardNow(_) => {
@@ -1201,10 +1257,10 @@ pub fn update_and_render(
         }
         Drawing {
             bundle,
-            drawing_state: _,
+            drawing_state,
         } => {
             let group = new_group!();
-            let outcome = do_five_card_draw!(group, bundle);
+            let outcome = do_five_card_draw!(group, bundle, Some(drawing_state));
 
             match outcome {
                 RoundOutcome::Undetermined => {},
@@ -1220,7 +1276,7 @@ pub fn update_and_render(
             bundle,
         } => {
             let group = new_group!();
-            let outcome = do_five_card_draw!(group, bundle);
+            let outcome = do_five_card_draw!(group, bundle, None);
 
             match outcome {
                 RoundOutcome::Undetermined => {},
@@ -1236,7 +1292,7 @@ pub fn update_and_render(
             bundle,
         } => {
             let group = new_group!();
-            let outcome = do_five_card_draw!(group, bundle);
+            let outcome = do_five_card_draw!(group, bundle, None);
 
             match outcome {
                 RoundOutcome::Undetermined => {},
