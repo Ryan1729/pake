@@ -211,6 +211,14 @@ impl DrawingState {
         }
     }
 
+    fn ready_to_advance_to_next_player(&self) -> bool {
+        false
+    }
+
+    fn ready_to_ask_next(&self) -> bool {
+        false
+    }
+
     fn animations_done(&self) -> bool {
         false
     }
@@ -624,20 +632,34 @@ pub fn update_and_render(
                 && drawing_state.animations_done() {
                     RoundOutcome::AdvanceToNext
                 } else {
+                    let action_opt: Option<()> = match drawing_state.current {
+                        Some(c) if drawing_state.ready_to_ask_next() => {
+                            match &state.table.seats.personalities[usize::from(c)] {
+                                Some(_) => {
+                                    // TODO Base choice of action off of personality
+
+                                    todo!()
+                                    //Some()
+                                },
+                                None => {
+                                    todo!()
+                                }
+                            }
+                        }
+                        Some(_) | None => {
+                            // Do nothing and assume any remaining animations
+                            // will be handled elsewhere.
+                            None
+                        }
+                    };
                     // TODO
                     //drawing_state.render(group);
-                    //drawing_state.advance_animations();
+                    // Advance animations
+                    //{
+                        //
+                    //}
 
-                    if drawing_state.animations_done() {
-                        // Advance `drawing_state.current` to next or set to 
-                        // None if we have looped.
-                        // (If this is tricky, feel free to make a like
-                        // enum DrawingIndex {
-                        //     NotSetYet,
-                        //     At(PlayerIndex),
-                        //     Done,
-                        // }
-                        // )
+                    if drawing_state.ready_to_advance_to_next_player() {
                         drawing_state.current = match drawing_state.current {
                             Some(c) => {
                                 let mut next_index = c + 1;
