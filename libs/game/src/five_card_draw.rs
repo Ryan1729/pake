@@ -19,10 +19,12 @@ pub const MIN_PLAYERS: u8 = 2;
 // one card. That seems like the reasonable upper limit.
 pub const MAX_PLAYERS: u8 = 9;
 
+pub const HAND_LEN: u8 = 5;
+
 /// The index for a `Card` in a `Hand`.
 // TODO will we need this?
 //pub type CardIndex = u8;
-type Hand = [Card; 5];
+type Hand = [Card; HAND_LEN as usize];
 
 /// The index for a `Hand` in `Hands`, not for indexing into a `Hand`.
 pub type HandIndex = u8;
@@ -198,6 +200,14 @@ pub struct StateBundle {
     pub selection: MenuSelection,
 }
 
+type DrawBits = u8;
+#[derive(Clone, Copy, Debug, Default)]
+pub struct DrawBitset(DrawBits);
+
+compile_time_assert!{
+    DrawBits::BITS >= HAND_LEN as u32
+}
+
 #[derive(Clone, Debug)]
 pub struct DrawingState {
     current: Option<HandIndex>,
@@ -216,11 +226,11 @@ impl DrawingState {
     }
 
     fn ready_to_ask_next(&self) -> bool {
-        false
+        self.animations_done()
     }
 
     fn animations_done(&self) -> bool {
-        false
+        true
     }
 }
 
@@ -632,6 +642,14 @@ pub fn update_and_render(
                 && drawing_state.animations_done() {
                     RoundOutcome::AdvanceToNext
                 } else {
+                    enum DrawAction {
+                        Zero,
+                        One,
+                        Two,
+                        Three,
+                        Four,
+                    }
+
                     let action_opt: Option<()> = match drawing_state.current {
                         Some(c) if drawing_state.ready_to_ask_next() => {
                             match &state.table.seats.personalities[usize::from(c)] {
