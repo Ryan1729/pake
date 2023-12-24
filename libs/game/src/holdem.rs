@@ -181,7 +181,7 @@ impl Table {
     pub fn selected(
         rng: &mut Xs,
         player_count: PlayerCount,
-        mut moneys: [Money; MAX_PLAYERS as usize],
+        moneys: [Money; MAX_PLAYERS as usize],
     ) -> Self {
         let mut personalities: [Personality; MAX_PLAYERS as usize] = <_>::default();
 

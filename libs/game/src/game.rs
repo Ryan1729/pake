@@ -177,7 +177,7 @@ macro_rules! mode_def {
         }
 
         #[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
-        enum $sub_game {
+        pub enum $sub_game {
             #[default]
             $($sub_games),+
         }
@@ -327,6 +327,8 @@ fn iter_works_on_these_examples() {
     assert_eq!(actual, [SubGame::Holdem, SubGame::AceyDeucey]);
 }
 
+// Keep this for the compile-time asserts
+#[allow(dead_code)]
 const CALCULATED_OVERALL_MAX_PLAYER_COUNT: PlayerCount = {
     let mut i = 0;
     let mut output = 0;

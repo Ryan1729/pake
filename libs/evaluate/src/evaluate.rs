@@ -74,8 +74,6 @@ pub fn holdem_hand(community_cards: holdem::CommunityCards, hand: holdem::Hand) 
 }
 
 pub fn five_card_hand(hand: [models::Card; 5]) -> Eval {
-    use holdem::CommunityCards::*;
-
     let mut cards = [to_poker_card(0); 5];
 
     cards[0] = to_poker_card(hand[0]);

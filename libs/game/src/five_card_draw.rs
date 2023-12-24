@@ -28,7 +28,6 @@ type Hand = [Card; HAND_LEN as usize];
 
 /// The index for a `Hand` in `Hands`, not for indexing into a `Hand`.
 pub type HandIndex = u8;
-pub const MAX_HAND_INDEX: u8 = MAX_PLAYERS - 1;
 
 pub type HandsLen = u8;
 
@@ -1036,7 +1035,7 @@ pub fn update_and_render(
             $pot: expr
         ) => {
             let hands = $hands;
-            let mut deck = $deck;
+            let deck = $deck;
             let dealer = $dealer;
             let player_count = $player_count;
             let mut pot = $pot;
@@ -1057,7 +1056,7 @@ pub fn update_and_render(
                 index
             };
 
-            let mut $bundle = StateBundle {
+            let $bundle = StateBundle {
                 deck,
                 hands,
                 dealer,
@@ -1069,23 +1068,23 @@ pub fn update_and_render(
         }
     }
 
-    const MENU_H: unscaled::H = unscaled::h_const_div(
-        command::HEIGHT_H,
-        6
-    );
+    //const MENU_H: unscaled::H = unscaled::h_const_div(
+        //command::HEIGHT_H,
+        //6
+    //);
 
-    const MENU_RECT: unscaled::Rect = unscaled::Rect {
-        x: unscaled::X(0),
-        y: unscaled::y_const_add_h(
-            unscaled::Y(0),
-            unscaled::h_const_sub(
-                command::HEIGHT_H,
-                MENU_H
-            )
-        ),
-        w: command::WIDTH_W,
-        h: MENU_H,
-    };
+    //const MENU_RECT: unscaled::Rect = unscaled::Rect {
+        //x: unscaled::X(0),
+        //y: unscaled::y_const_add_h(
+            //unscaled::Y(0),
+            //unscaled::h_const_sub(
+                //command::HEIGHT_H,
+                //MENU_H
+            //)
+        //),
+        //w: command::WIDTH_W,
+        //h: MENU_H,
+    //};
 
     match &mut state.table.state {
         Undealt {

@@ -55,14 +55,14 @@ fn deal(rng: &mut Xs) -> (Posts, Deck) {
 }
 
 /// In some sense any number of players could play, but we want some maximum.
-/// Each turn up to 3 cards may be dealt, so if more than 17 players play, then the
-/// deck will need to be reshuffled every single round. This seems as good a place
-/// to cap things as anywhere.
+/// Each turn up to 3 cards may be dealt, so if more than 17 players play, 
+/// then the deck will need to be reshuffled every single round. This seems
+/// as good a place to cap things as anywhere.
+
 pub const MIN_PLAYERS: u8 = 2;
 pub const MAX_PLAYERS: u8 = 17;
 
 pub type HandIndex = u8;
-pub const MAX_HAND_INDEX: u8 = MAX_PLAYERS - 1;
 
 #[derive(Copy, Clone, Debug, Default, Eq, Ord, PartialEq, PartialOrd)]
 pub enum PlayerCount {
@@ -523,11 +523,16 @@ pub fn update_and_render(
 
             draw_money_in_rect!($group, $bundle.pot, pot_rect);
 
-            let CARD_1_X: unscaled::X =
+            const CARD_1_X: unscaled::X =
                 // Need an extra `card::WIDTH` because the sprite is drawn from the
                 // top left corner
-                command::MID_X - (card::WIDTH * 2 + card::WIDTH / 2);
-            let CARD_1_Y: unscaled::Y = command::MID_Y;
+                command::MID_X.saturating_sub(
+                    unscaled::w_const_add(
+                        unscaled::w_const_mul(card::WIDTH, 2),
+                        unscaled::w_const_div(card::WIDTH, 2)
+                    ),
+                );
+            const CARD_1_Y: unscaled::Y = command::MID_Y;
 
             $group.commands.draw_card(
                 posts[0],
@@ -535,8 +540,14 @@ pub fn update_and_render(
                 CARD_1_Y,
             );
 
-            let CARD_2_X: unscaled::X = command::MID_X + (card::WIDTH + card::WIDTH / 2);
-            let CARD_2_Y: unscaled::Y = command::MID_Y;
+            const CARD_2_X: unscaled::X = 
+                command::MID_X.saturating_add(
+                    unscaled::w_const_add(
+                        card::WIDTH,
+                        unscaled::w_const_div(card::WIDTH, 2)
+                    ),
+                );
+            const CARD_2_Y: unscaled::Y = command::MID_Y;
 
             match (get_rank(posts[0]) == ranks::ACE, $bundle.selection.ace) {
                 (true, Ace::Undecided) => {
